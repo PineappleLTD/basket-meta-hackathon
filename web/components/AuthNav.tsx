@@ -20,7 +20,7 @@ export function AuthNav() {
   if (user) {
     return (
       <div className="auth">
-        <Link href="/basket">new basket</Link>
+        <Link href="/build">new basket</Link>
         <Link href="/baskets">my baskets</Link>
         <button
           type="button"

@@ -32,7 +32,7 @@ export default function Page() {
       {!baskets && !error && <p className="thesis-note">Loading…</p>}
       {baskets?.length === 0 && (
         <p className="thesis-note">
-          No baskets yet. <Link href="/basket" className="text-link">Build one from a thesis</Link>.
+          No baskets yet. <Link href="/build" className="text-link">Build one from a thesis</Link>.
         </p>
       )}
 
