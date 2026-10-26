@@ -16,9 +16,30 @@ def as_utc(dt: datetime) -> datetime:
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
+def _str_enum(enum: type[StrEnum]) -> Enum:
+    """Stored as the enum's values in a plain string column."""
+    return Enum(enum, native_enum=False, values_callable=lambda e: [m.value for m in e])
+
+
 class Side(StrEnum):
     YES = "yes"
     NO = "no"
+
+
+class Action(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+class AccountMode(StrEnum):
+    PAPER = "paper"
+    LIVE = "live"
+
+
+class BasketOrderKind(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+    REBALANCE = "rebalance"
 
 
 class Market(Base):
@@ -106,7 +127,7 @@ class BasketPosition(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="CASCADE"))
     market_id: Mapped[int] = mapped_column(ForeignKey("markets.id", ondelete="RESTRICT"))
-    side: Mapped[Side] = mapped_column(Enum(Side, native_enum=False, values_callable=lambda e: [s.value for s in e]))
+    side: Mapped[Side] = mapped_column(_str_enum(Side))
     target_weight: Mapped[float]
     # Contracts held per basket share. Set so the basket's NAV starts at BASE_NAV.
     units: Mapped[float]
@@ -127,3 +148,103 @@ class BasketNav(Base):
     nav: Mapped[float]
 
     basket: Mapped[Basket] = relationship()
+
+
+class Account(Base):
+    """A user's trading account. Each user has at most one per mode."""
+
+    __tablename__ = "accounts"
+    __table_args__ = (UniqueConstraint("user_id", "mode"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    mode: Mapped[AccountMode] = mapped_column(_str_enum(AccountMode))
+    # Dollars. Paper accounts start at Settings.paper_starting_cash.
+    cash: Mapped[float]
+    starting_cash: Mapped[float]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    reset_at: Mapped[datetime | None]
+
+    holdings: Mapped[list["Holding"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class Holding(Base):
+    """Contracts an account holds on behalf of one of its owner's baskets."""
+
+    __tablename__ = "holdings"
+    __table_args__ = (UniqueConstraint("account_id", "basket_id", "market_id", "side"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    # RESTRICT: a basket can't be deleted while money is in it.
+    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="RESTRICT"), index=True)
+    market_id: Mapped[int] = mapped_column(ForeignKey("markets.id", ondelete="RESTRICT"))
+    side: Mapped[Side] = mapped_column(_str_enum(Side))
+    contracts: Mapped[int]
+    # Total paid for the contracts still held, fees included.
+    cost: Mapped[float]
+
+    account: Mapped[Account] = relationship(back_populates="holdings")
+    basket: Mapped[Basket] = relationship(lazy="joined")
+    market: Mapped[Market] = relationship(lazy="joined")
+
+
+class BasketOrder(Base):
+    """One instruction against a basket (buy $X, sell a fraction, rebalance) and the orders it placed."""
+
+    __tablename__ = "basket_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    # Kept as history after the basket is deleted.
+    basket_id: Mapped[int | None] = mapped_column(ForeignKey("baskets.id", ondelete="SET NULL"), index=True)
+    basket_name: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[BasketOrderKind] = mapped_column(_str_enum(BasketOrderKind))
+    # Dollars for a buy, share of holdings for a sell, None for a rebalance.
+    amount: Mapped[float | None]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    orders: Mapped[list["Order"]] = relationship(
+        back_populates="basket_order", cascade="all, delete-orphan", lazy="selectin", order_by="Order.id"
+    )
+
+
+class Order(Base):
+    """One leg sent to the broker: buy or sell `count` contracts of one market outcome."""
+
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    basket_order_id: Mapped[int] = mapped_column(ForeignKey("basket_orders.id", ondelete="CASCADE"), index=True)
+    market_id: Mapped[int] = mapped_column(ForeignKey("markets.id", ondelete="RESTRICT"))
+    side: Mapped[Side] = mapped_column(_str_enum(Side))
+    action: Mapped[Action] = mapped_column(_str_enum(Action))
+    count: Mapped[int]
+    # Quoted price the order was sized against; the limit for a live order.
+    limit_price: Mapped[float]
+    filled_count: Mapped[int]
+    # Average fill price per contract; None when nothing filled.
+    fill_price: Mapped[float | None]
+    fee: Mapped[float]
+    # Sells only: proceeds less fee less the cost basis of the contracts sold.
+    realized_pnl: Mapped[float | None]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    basket_order: Mapped[BasketOrder] = relationship(back_populates="orders")
+    market: Mapped[Market] = relationship(lazy="joined")
+
+
+class AccountValue(Base):
+    """An account's equity (cash + holdings at market) at creation, after each trade, and on every sync."""
+
+    __tablename__ = "account_values"
+    __table_args__ = (Index("ix_account_values_account_ts", "account_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    ts: Mapped[datetime]
+    equity: Mapped[float]
+
+    account: Mapped[Account] = relationship()

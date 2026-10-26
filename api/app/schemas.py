@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models import Side
+from app.models import AccountMode, Action, BasketOrderKind, Side
 
 
 class Credentials(BaseModel):
@@ -178,3 +178,126 @@ class ThesisSelection(BaseModel):
     diversification_ratio: float
     # Ready to send as `positions` to POST /baskets.
     positions: list[PositionIn]
+
+
+class BuyIn(BaseModel):
+    # Dollars to put in, split across positions by target weight. Fees come out of it.
+    amount: float = Field(gt=0)
+    # Plan and price the orders without placing them.
+    dry_run: bool = False
+
+
+class SellIn(BaseModel):
+    # Share of each holding to sell, rounded down to whole contracts; 1 sells everything.
+    fraction: float = Field(default=1.0, gt=0, le=1)
+    dry_run: bool = False
+
+
+class RebalanceIn(BaseModel):
+    dry_run: bool = False
+
+
+class HoldingOut(BaseModel):
+    market: MarketOut
+    side: Side
+    contracts: int
+    # Cost per contract, fees included.
+    avg_cost: float
+    cost: float
+    price: float
+    value: float
+    unrealized_pnl: float
+    # Share of the basket's holdings value, and the share the basket targets.
+    weight: float
+    target_weight: float
+    drift: float
+
+
+class BasketHoldingsOut(BaseModel):
+    basket_id: int
+    basket_name: str
+    value: float
+    cost: float
+    unrealized_pnl: float
+    max_drift: float
+    holdings: list[HoldingOut]
+
+
+class AccountOut(BaseModel):
+    mode: AccountMode
+    cash: float
+    starting_cash: float
+    holdings_value: float
+    # Cash plus holdings at market.
+    equity: float
+    # Equity less starting cash.
+    pnl: float
+    created_at: datetime
+    reset_at: datetime | None
+    baskets: list[BasketHoldingsOut]
+
+
+class EquityPoint(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ts: datetime
+    equity: float
+
+
+class OrderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    market_id: int
+    side: Side
+    action: Action
+    count: int
+    limit_price: float
+    filled_count: int
+    fill_price: float | None
+    fee: float
+    realized_pnl: float | None
+    created_at: datetime
+
+
+class BasketOrderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    basket_id: int | None
+    basket_name: str
+    kind: BasketOrderKind
+    amount: float | None
+    created_at: datetime
+    orders: list[OrderOut]
+
+
+class PlannedOrderOut(BaseModel):
+    market_id: int
+    side: Side
+    action: Action
+    count: int
+    price: float
+    fee: float
+    # Negative for a buy.
+    cash_delta: float
+
+
+class SkippedLegOut(BaseModel):
+    market_id: int
+    side: Side
+    reason: str
+
+
+class TradePreview(BaseModel):
+    kind: BasketOrderKind
+    orders: list[PlannedOrderOut]
+    skipped: list[SkippedLegOut]
+    cash_delta: float
+    cash_after: float
+
+
+class TradeResult(BaseModel):
+    basket_order: BasketOrderOut
+    skipped: list[SkippedLegOut]
+    account: AccountOut

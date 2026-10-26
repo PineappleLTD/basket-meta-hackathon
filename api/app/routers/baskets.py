@@ -3,12 +3,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser
 from app.db import SessionDep
-from app.models import Basket, BasketNav, User, utcnow
-from app.routers.common import HistoryLimit, history
+from app.models import Basket, BasketNav, Holding, utcnow
+from app.routers.common import HistoryLimit, history, owned_basket
 from app.schemas import BasketIn, BasketOut, MarketOut, NavPoint, PositionOut, RebalancePlan, RebalanceResult, TradeOut
 from app.services import baskets as svc
 
@@ -39,14 +38,6 @@ def _basket_out(basket: Basket, valuation: svc.Valuation | None = None) -> Baske
             for pv in valuation.positions
         ],
     )
-
-
-def _owned(session: Session, user: User, basket_id: int) -> Basket:
-    """Another user's basket is reported missing, so ids don't reveal what exists."""
-    basket = session.get(Basket, basket_id)
-    if basket is None or basket.owner_id != user.id:
-        raise HTTPException(404, "Basket not found")
-    return basket
 
 
 def _trade_out(trade: svc.Trade) -> TradeOut:
@@ -85,7 +76,7 @@ def create_basket(body: BasketIn, session: SessionDep, user: CurrentUser):
 
 @router.get("/{basket_id}", response_model=BasketOut)
 def get_basket(basket_id: int, session: SessionDep, user: CurrentUser):
-    return _basket_out(_owned(session, user, basket_id))
+    return _basket_out(owned_basket(session, user, basket_id))
 
 
 @router.get("/{basket_id}/nav", response_model=list[NavPoint])
@@ -97,13 +88,16 @@ def get_nav_history(
     limit: HistoryLimit = 1000,
 ):
     """NAV history, oldest first. `limit` keeps the most recent points."""
-    _owned(session, user, basket_id)
+    owned_basket(session, user, basket_id)
     return history(session, BasketNav.basket_id, basket_id, since, limit)
 
 
 @router.delete("/{basket_id}", status_code=204)
 def delete_basket(basket_id: int, session: SessionDep, user: CurrentUser):
-    session.delete(_owned(session, user, basket_id))
+    basket = owned_basket(session, user, basket_id)
+    if session.scalar(select(Holding.id).where(Holding.basket_id == basket.id).limit(1)) is not None:
+        raise HTTPException(409, "Sell this basket's holdings before deleting it")
+    session.delete(basket)
     session.commit()
 
 
@@ -115,7 +109,7 @@ def preview_rebalance(
     threshold: Annotated[float, Query(gt=0, le=1)] = svc.DEFAULT_DRIFT_THRESHOLD,
 ):
     """Trades that would restore target weights at the current NAV. Changes nothing."""
-    basket = _owned(session, user, basket_id)
+    basket = owned_basket(session, user, basket_id)
     try:
         valuation, trades = svc.plan_rebalance(basket)
     except svc.BasketError as e:
@@ -132,7 +126,7 @@ def preview_rebalance(
 @router.post("/{basket_id}/rebalance", response_model=RebalanceResult)
 def rebalance(basket_id: int, session: SessionDep, user: CurrentUser):
     """Reset every position to its target weight at the current NAV."""
-    basket = _owned(session, user, basket_id)
+    basket = owned_basket(session, user, basket_id)
     try:
         trades = svc.apply_rebalance(basket)
     except svc.BasketError as e:

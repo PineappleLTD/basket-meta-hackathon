@@ -1,15 +1,11 @@
 import Form from "next/form";
 import Link from "next/link";
-import { ACCOUNT_BALANCE, BUILD_ETA_SECONDS, DEFAULT_THEME, SUGGESTED_THESES } from "@/lib/data";
+import { AppHeader } from "@/components/AppHeader";
+import { ACCOUNT_BALANCE } from "@/lib/accounts";
 import { usd } from "@/lib/format";
+import { BUILD_ETA_SECONDS, DEFAULT_THEME, SUGGESTED_THESES } from "@/lib/theses";
 
 type Props = { searchParams: Promise<{ theme?: string | string[] }> };
-
-const TABS: [label: string, href: string][] = [
-  ["Build", "/build"],
-  ["Baskets", "/basket"],
-  ["Signals", "/basket#signals"],
-];
 
 // Picking a chip sets ?theme=... here; submitting hands the thesis to /basket to build.
 export default async function BuildPage({ searchParams }: Props) {
@@ -18,23 +14,13 @@ export default async function BuildPage({ searchParams }: Props) {
 
   return (
     <div className="build">
-      <nav className="topbar has-tabs">
-        <Link href="/" className="mark">
-          <i />
-          Basket
-        </Link>
-        <div className="tabs">
-          {TABS.map(([label, href]) => (
-            <Link key={label} href={href} aria-current={href === "/build" ? "page" : undefined}>
-              {label}
-            </Link>
-          ))}
-        </div>
-        <span className="bd-bal">{usd(ACCOUNT_BALANCE)}</span>
-      </nav>
+      <AppHeader />
 
       <main className="bd-main">
-        <div className="bd-kicker">New basket</div>
+        <div className="bd-kicker">
+          <span>New basket</span>
+          <span className="bd-bal">{usd(ACCOUNT_BALANCE)}</span>
+        </div>
         <h1>Your thesis, as a portfolio.</h1>
 
         <Form action="/basket">
