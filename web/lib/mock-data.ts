@@ -64,6 +64,24 @@ const THEMES: Record<string, { keywords: string[]; contracts: Row[] }> = {
 export const EXAMPLE_THEMES = Object.keys(THEMES);
 export const DEFAULT_THEME = EXAMPLE_THEMES[0];
 
+/** Starter theses on the Build page. Ones without a theme of their own get the broad basket. */
+export const SUGGESTED_THESES = [
+  "AI regulation",
+  "US recession 2027",
+  "Fed cuts by March",
+  "Oil above $100",
+  "Bitcoin above $150k",
+  "Atlantic hurricane season",
+  "SpaceX IPO in 2027",
+  "Housing slowdown",
+];
+
+/** Cash available to the signed-in account, in USD. */
+export const ACCOUNT_BALANCE = 2500;
+
+/** Typical time to match and weight a basket. */
+export const BUILD_ETA_SECONDS = 8;
+
 // [minutesAgo, source, headline, ticker, predicted move, actual move]
 const HEADLINES: [number, string, string, string, number, number][] = [
   [14, "Wire", "Senate Commerce schedules markup of bipartisan AI safety framework", "AIBILL-26", 0.05, 0.01],

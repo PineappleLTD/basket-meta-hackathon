@@ -31,7 +31,7 @@ function NewsItem({ n }: { n: NewsSignal }) {
 export function NewsFeed({ news }: { news: NewsSignal[] }) {
   const threshold = Math.round(REBALANCE_THRESHOLD * 100);
   return (
-    <section>
+    <section id="signals">
       <SectionHeader
         num="03"
         label="News"

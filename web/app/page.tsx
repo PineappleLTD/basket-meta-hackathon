@@ -36,11 +36,14 @@ function FlowArrow() {
 export default function Home() {
   return (
     <main className="home">
-      <nav className="topbar">
+      <nav className="topbar has-tabs">
         <span className="mark">
           <i />
           basket
         </span>
+        <div className="tabs">
+          <Link href="/build">Build</Link>
+        </div>
         <div className="auth">
           <Link href="/login">log in</Link>
           <Link href="/register" className="auth-cta">
