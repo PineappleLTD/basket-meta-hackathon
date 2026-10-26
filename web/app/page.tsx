@@ -3,6 +3,7 @@ import { AuthNav } from "@/components/AuthNav";
 import { DbStatus } from "@/components/DbStatus";
 import { MarketGraph } from "@/components/MarketGraph";
 import { Logo } from "@/components/Logo";
+import { NavTabs } from "@/components/NavTabs";
 
 const MARKETS: [
   exchange: string,
@@ -39,7 +40,7 @@ function FlowArrow() {
 export default function Home() {
   return (
     <main className="home">
-      <nav className="topbar">
+      <nav className="topbar has-tabs">
         <div className="brand">
           <span className="mark">
             <Logo />
@@ -47,6 +48,7 @@ export default function Home() {
           </span>
           <DbStatus />
         </div>
+        <NavTabs />
         <AuthNav />
       </nav>
 
@@ -59,7 +61,7 @@ export default function Home() {
             related contracts on Polymarket and Kalshi, combine them into one
             basket you can buy, and adjust it based on the news for you
           </p>
-          <Link href="/basket" className="cta">
+          <Link href="/build" className="cta">
             build a basket <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -142,7 +144,7 @@ export default function Home() {
 
         <div className="explain-cta">
           <h2>got a take?</h2>
-          <Link href="/basket" className="cta">
+          <Link href="/build" className="cta">
             build a basket <span aria-hidden="true">→</span>
           </Link>
         </div>

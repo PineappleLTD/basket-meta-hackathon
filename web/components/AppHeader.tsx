@@ -5,19 +5,20 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AuthNav } from "@/components/AuthNav";
 import { DbStatus } from "@/components/DbStatus";
+import { NavTabs } from "@/components/NavTabs";
 import { getToken } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 
-// Top bar for signed-in pages. Sends anyone without a token to log in.
-export function AppHeader() {
+// Top bar for app pages. Sends anyone without a token to log in, unless the page is public.
+export function AppHeader({ requireAuth = true }: { requireAuth?: boolean }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!getToken()) router.replace("/login");
-  }, [router]);
+    if (requireAuth && !getToken()) router.replace("/login");
+  }, [requireAuth, router]);
 
   return (
-    <nav className="topbar">
+    <nav className="topbar has-tabs">
       <div className="brand">
         <Link href="/" className="mark">
           <Logo />
@@ -25,6 +26,7 @@ export function AppHeader() {
         </Link>
         <DbStatus />
       </div>
+      <NavTabs />
       <AuthNav inApp />
     </nav>
   );
