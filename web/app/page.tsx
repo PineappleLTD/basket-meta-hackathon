@@ -60,7 +60,7 @@ export default function Home() {
             related contracts on Polymarket and Kalshi, combine them into one
             basket you can buy, and adjust it based on the news for you
           </p>
-          <Link href="/basket" className="cta">
+          <Link href="/build" className="cta">
             build a basket <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -143,7 +143,7 @@ export default function Home() {
 
         <div className="explain-cta">
           <h2>got a take?</h2>
-          <Link href="/basket" className="cta">
+          <Link href="/build" className="cta">
             build a basket <span aria-hidden="true">→</span>
           </Link>
         </div>
