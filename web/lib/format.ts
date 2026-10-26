@@ -1,5 +1,7 @@
 export const pct = (x: number, digits = 1) => `${(x * 100).toFixed(digits)}%`;
 
+export const usd = (x: number) => x.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
 export const signedPct = (x: number) => `${x >= 0 ? "+" : ""}${pct(x)}`;
 
 /** Probability-point move as cents, e.g. 0.035 -> "+3.5¢". */
