@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge graph</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #FFFFFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  /* drop .kg anywhere: it is a square that sizes to its width */
+  .kg { width: 100%; max-width: 600px; container-type: inline-size; }
+  .kg-stage { position: relative; width: 100%; height: 100cqw; }
+  .kg-line { position: absolute; height: 1px; background: #B8B8B8; transform-origin: 0 50%; }
+  .kg-dot { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); }
+  .kg-label { position: absolute; font-family: 'JetBrains Mono', monospace; line-height: 1.3; white-space: pre; }
+</style>
+</head>
+<body>
+<div class="kg" aria-hidden="true"><div class="kg-stage" id="kg"></div></div>
+<script>
+(function () {
+  const ACCENT = '#FF5A1F';
+  class KGCore {
+  // ===== knowledge graph: model (built once) =====
+  kgBuild() {
+    const THESES = ['AI regulation', 'US recession 2027', 'Fed cuts by March', 'Oil above $100', 'Bitcoin above $150k', 'Tariffs stay high'];
+    let seed = 7;
+    const rnd = () => {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const norm = (v) => { const m = Math.hypot(v.x, v.y, v.z) || 1; return { x: v.x / m, y: v.y / m, z: v.z / m }; };
+    const randUnit = () => { const z = rnd() * 2 - 1, a = rnd() * Math.PI * 2, s = Math.sqrt(1 - z * z); return { x: s * Math.cos(a), y: z, z: s * Math.sin(a) }; };
+    // per depth: base length, children range, dot size (px at 600px wide), colour
+    const D = [
+      { len: 20, kids: [1, 3], size: 18, bg: '#0A0A0A' },
+      { len: 15, kids: [1, 2], size: 12, bg: '#A8A8A8' },
+      { len: 12, kids: [0, 2], size: 12, bg: '#A8A8A8' },
+      { len: 9, kids: [0, 0], size: 11, bg: '#A8A8A8' }
+    ];
+    const nodes = [{ x: 0, y: 0, z: 0, size: 10, bg: null, root: true, pd: 0, kids: 0 }];
+    const edges = [];
+    const placed = [nodes[0]];
+    // try a dozen directions, keep the one landing in the emptiest space; refuse if it would crowd a neighbour
+    const pickDir = (from, base, est) => {
+      let best = null, bestScore = -1;
+      for (let k = 0; k < 12; k++) {
+        const r = randUnit(), spread = 0.5 + rnd() * 0.9;
+        const dir = norm({ x: base.x + r.x * spread, y: base.y + r.y * spread, z: base.z + r.z * spread });
+        const e = { x: from.x + dir.x * est, y: from.y + dir.y * est, z: from.z + dir.z * est };
+        if (Math.hypot(e.x, e.y, e.z) > 50) continue;
+        let m = Infinity;
+        for (const p of placed) { if (p === from) continue; const dd = Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z); if (dd < m) m = dd; }
+        if (m > bestScore) { bestScore = m; best = { dir, e }; }
+      }
+      if (!best || bestScore < 10) return null;
+      placed.push(best.e);
+      return best.dir;
+    };
+    let level = [];
+    const N1 = 5;
+    for (let i = 0; i < N1; i++) {
+      const a = (i / N1) * Math.PI * 2 + (rnd() - 0.5) * 0.4;
+      level.push({ pi: 0, dir: norm({ x: Math.cos(a), y: [0.95, -0.85, 0.25, -1.05, 0.7][i], z: Math.sin(a) }) });
+    }
+    let signals = 0;
+    for (let g = 0; g < D.length && level.length; g++) {
+      const G = D[g], next = [];
+      level.forEach((item) => {
+        const p = nodes[item.pi];
+        const len = G.len * 1.45 * (0.8 + rnd() * 0.4);
+        const q = { x: p.x + item.dir.x * len, y: p.y + item.dir.y * len, z: p.z + item.dir.z * len };
+        if (Math.hypot(q.x, q.y, q.z) > 50) return;
+        const d = 0.1 + g * 0.45 + rnd() * 0.3; // whole build lands inside ~3s
+        const isSig = g === 1 && signals < 3 && rnd() < 0.3;
+        if (isSig) signals++;
+        const ni = nodes.length;
+        nodes.push({ x: q.x, y: q.y, z: q.z, size: G.size, bg: G.bg, pd: d + 0.5, kids: 0, sig: isSig ? 5 + signals * 3.3 : null });
+        edges.push({ a: item.pi, b: ni, d });
+        placed.push(nodes[ni]);
+        p.kids++;
+        const ng = D[g + 1];
+        if (!ng) return;
+        const n = G.kids[0] + Math.floor(Math.pow(rnd(), 1.2) * (G.kids[1] - G.kids[0] + 1));
+        for (let c = 0; c < n; c++) { const dir = pickDir(nodes[ni], item.dir, ng.len * 1.45); if (dir) next.push({ pi: ni, dir }); }
+      });
+      level = next;
+    }
+    // labels: highest / lowest tips, text sits above / below them
+    const picked = [];
+    nodes.filter((n) => !n.root && n.kids === 0 && Math.abs(n.y) > 6).sort((a, b) => Math.abs(b.y) - Math.abs(a.y)).forEach((n) => {
+      if (picked.length < THESES.length && picked.every((p) => Math.sign(p.y) !== Math.sign(n.y) || Math.abs(p.y - n.y) > 6)) picked.push(n);
+    });
+    picked.forEach((n, i) => { n.label = THESES[i]; n.top = n.y < 0; n.tdur = 7 + ((i * 1.37) % 4); n.ld = 2.3 + i * 0.08; });
+    // tips that die back and regrow now and then
+    nodes.forEach((n) => {
+      if (n.root || n.kids !== 0 || n.label || n.sig || rnd() > 0.38) return;
+      n.blink = { P: 14 + rnd() * 16, bd: 3.2 + rnd() * 14 };
+    });
+    // hidden sprouts that grow into empty space, then die
+    const anchors = nodes.map((n, i) => i).filter((i) => !nodes[i].root && !nodes[i].label && !nodes[i].sig && !nodes[i].blink && Math.hypot(nodes[i].x, nodes[i].y, nodes[i].z) > 8);
+    for (let s = 0; s < 6 && anchors.length; s++) {
+      const ai = anchors[Math.floor(rnd() * anchors.length)], a = nodes[ai];
+      const slen = 14.5;
+      const dir = pickDir(a, norm(a), slen);
+      if (!dir) continue;
+      const ni = nodes.length;
+      nodes.push({ x: a.x + dir.x * slen, y: a.y + dir.y * slen, z: a.z + dir.z * slen, size: 11, bg: '#A8A8A8', pd: 0, kids: 0, sprout: { P: 10 + rnd() * 12, bd: 3.5 + rnd() * 10 } });
+      edges.push({ a: ai, b: ni, d: 0 });
+    }
+    return { nodes, edges };
+  }
+
+  // ===== knowledge graph: one frame at time t (seconds) =====
+  kgFrame(M, t, accent, alphas, instant) {
+    const r = (v) => Math.round(v * 100) / 100;
+    const U = (px) => px / 6; // px at a 600px-wide stage -> stage units (1 unit = 1cqw)
+    const ease = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : 1 - Math.pow(1 - u, 3));
+    const kf = (ph, pts) => {
+      for (let i = 1; i < pts.length; i++) {
+        if (ph <= pts[i][0]) { const p0 = pts[i - 1][0], v0 = pts[i - 1][1], p1 = pts[i][0], v1 = pts[i][1]; const u = (ph - p0) / ((p1 - p0) || 1); return v0 + (v1 - v0) * u * u * (3 - 2 * u); }
+      }
+      return pts[pts.length - 1][1];
+    };
+    const cyc = (bd, P) => (t < bd ? -1 : ((t - bd) % P) / P);
+    const hex = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+    const mix = (a, b, u) => { const A = hex(a), B = hex(b); return 'rgb(' + A.map((v, k) => Math.round(v + (B[k] - v) * u)).join(',') + ')'; };
+    const BL = [[0, 1], [0.72, 1], [0.77, 0], [0.85, 0], [0.9, 1], [1, 1]];
+    const BN = [[0, 1], [0.7, 1], [0.73, 0], [0.89, 0], [0.92, 1], [1, 1]];
+    const SL = [[0, 0], [0.55, 0], [0.62, 1], [0.84, 1], [0.9, 0], [1, 0]];
+    const SN = [[0, 0], [0.61, 0], [0.65, 1], [0.82, 1], [0.85, 0], [1, 0]];
+    const SIG = [[0, 0], [0.74, 0], [0.8, 1], [0.92, 1], [1, 0]];
+    const TY = [[0, 0], [0.12, 1], [0.72, 1], [0.8, 0], [1, 0]];
+
+    // camera: slow spin, slight look from above, perspective
+    const TH = (t * Math.PI * 2) / 96, PHI = (10 * Math.PI) / 180, PERS = 220, CX = 50, CY = 50, K = 0.86;
+    const cT = Math.cos(TH), sT = Math.sin(TH), cP = Math.cos(PHI), sP = Math.sin(PHI);
+    const proj = M.nodes.map((n) => {
+      const x1 = (n.x * cT + n.z * sT) * K, z1 = (-n.x * sT + n.z * cT) * K;
+      const y2 = n.y * K * cP - z1 * sP, z2 = n.y * K * sP + z1 * cP;
+      const s = PERS / (PERS - z2);
+      return { X: CX + x1 * s, Y: CY + y2 * s, s, d: Math.max(0, Math.min(1, (z2 + 50) / 100)) };
+    });
+    const nodeVis = (n) => {
+      let v = n.root ? ease(t / 0.35) : ease((t - n.pd) / 0.35);
+      if (n.blink) { const ph = cyc(n.blink.bd, n.blink.P); if (ph >= 0) v *= kf(ph, BN); }
+      if (n.sprout) { const ph = cyc(n.sprout.bd, n.sprout.P); v = ph < 0 ? 0 : kf(ph, SN); }
+      return v;
+    };
+    const vis = M.nodes.map(nodeVis);
+
+    // lines: drawn under all dots, trimmed so they stop short of each dot
+    const lines = [];
+    M.edges.forEach((e) => {
+      const c = M.nodes[e.b];
+      let v = ease((t - e.d) / 0.7);
+      if (c.blink) { const ph = cyc(c.blink.bd, c.blink.P); if (ph >= 0) v *= kf(ph, BL); }
+      if (c.sprout) { const ph = cyc(c.sprout.bd, c.sprout.P); v = ph < 0 ? 0 : kf(ph, SL); }
+      if (v <= 0.01) return;
+      const A = proj[e.a], B = proj[e.b];
+      const dx = B.X - A.X, dy = B.Y - A.Y, L = Math.hypot(dx, dy);
+      if (L < 0.01) return;
+      const ra = (U(M.nodes[e.a].size) * A.s) / 2 + 0.8, rb = (U(c.size) * B.s) / 2 + 0.8;
+      const full = L - ra - rb;
+      if (full <= 0) return;
+      const ux = dx / L, uy = dy / L;
+      lines.push({ x: r(A.X + ux * ra), y: r(A.Y + uy * ra), w: r(full * v), a: r((Math.atan2(dy, dx) * 180) / Math.PI), o: r(0.2 + 0.8 * ((A.d + B.d) / 2)) });
+    });
+
+    // dots: back to front, smaller and lighter at the back
+    const dots = [];
+    proj.map((p, i) => i).sort((i, j) => proj[i].d - proj[j].d).forEach((i) => {
+      const n = M.nodes[i], p = proj[i], v = vis[i];
+      if (v <= 0.01) return;
+      let c = n.root ? accent : n.bg;
+      if (n.sig) { const ph = cyc(n.sig, 10); if (ph >= 0) c = mix(n.bg, accent, kf(ph, SIG)); }
+      dots.push({ x: r(p.X), y: r(p.Y), s: r(U(n.size) * p.s * v), c, o: n.root ? 1 : r(0.3 + 0.7 * p.d) });
+    });
+
+    // labels: only on the near side, never on top of a dot or another label
+    const boxes = [];
+    const labels = [];
+    M.nodes.map((n, i) => i).filter((i) => M.nodes[i].label).sort((i, j) => proj[j].d - proj[i].d).forEach((i) => {
+      const n = M.nodes[i], p = proj[i], N = n.label.length;
+      const fs = 1.85 * p.s * (0.9 + 0.3 * p.d);
+      const w = N * 0.6 * fs + 0.8, h = fs * 1.3;
+      const gap = (U(n.size) * p.s) / 2 + 1.2;
+      const left = p.X - w / 2, top = n.top ? p.Y - gap - h : p.Y + gap;
+      const box = { l: left, r: left + w, t: top, b: top + h };
+      let ok = p.d > 0.42 && vis[i] > 0.5;
+      if (ok) ok = boxes.every((b) => box.r < b.l || box.l > b.r || box.b < b.t || box.t > b.b);
+      if (ok) ok = proj.every((q, k) => {
+        if (k === i || vis[k] < 0.3 || q.d < 0.3) return true;
+        const rr = (U(M.nodes[k].size) * q.s) / 2 + 0.4;
+        return q.X + rr < box.l || q.X - rr > box.r || q.Y + rr < box.t || q.Y - rr > box.b;
+      });
+      const a0 = alphas[i] || 0;
+      const a = instant ? (ok ? 1 : 0) : a0 + ((ok ? 1 : 0) - a0) * 0.12;
+      alphas[i] = a;
+      if (ok) boxes.push(box);
+      const frac = instant ? 1 : t < n.ld ? 0 : kf(((t - n.ld) % n.tdur) / n.tdur, TY);
+      const chars = Math.round(frac * N);
+      if (a < 0.02 || chars === 0) return;
+      const dd = Math.min(1, Math.max(0, (p.d - 0.42) / 0.58));
+      labels.push({ x: r(left), y: r(top), fs: r(fs), text: n.label.slice(0, chars), c: mix('#9A9A9A', '#0A0A0A', dd), o: r(a) });
+    });
+    return { lines, dots, labels };
+  }
+  }
+  const core = new KGCore();
+  const model = core.kgBuild();
+  const alphas = {};
+  const stage = document.getElementById('kg');
+  const layers = ['kg-line', 'kg-dot', 'kg-label'].map(() => { const d = document.createElement('div'); stage.appendChild(d); return { el: d, pool: [] }; });
+  const sync = (layer, n, cls) => {
+    while (layer.pool.length < n) { const e = document.createElement('div'); e.className = cls; layer.el.appendChild(e); layer.pool.push(e); }
+    layer.pool.forEach((e, i) => { e.style.display = i < n ? '' : 'none'; });
+  };
+  function draw(t, instant) {
+    const f = core.kgFrame(model, t, ACCENT, alphas, instant);
+    sync(layers[0], f.lines.length, 'kg-line');
+    f.lines.forEach((l, i) => { const s = layers[0].pool[i].style; s.left = l.x + 'cqw'; s.top = l.y + 'cqw'; s.width = l.w + 'cqw'; s.opacity = l.o; s.transform = 'rotate(' + l.a + 'deg)'; });
+    sync(layers[1], f.dots.length, 'kg-dot');
+    f.dots.forEach((d, i) => { const s = layers[1].pool[i].style; s.left = d.x + 'cqw'; s.top = d.y + 'cqw'; s.width = s.height = d.s + 'cqw'; s.background = d.c; s.opacity = d.o; });
+    sync(layers[2], f.labels.length, 'kg-label');
+    f.labels.forEach((l, i) => { const e = layers[2].pool[i], s = e.style; s.left = l.x + 'cqw'; s.top = l.y + 'cqw'; s.fontSize = l.fs + 'cqw'; s.color = l.c; s.opacity = l.o; if (e.textContent !== l.text) e.textContent = l.text; });
+  }
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { draw(30, true); return; }
+  const t0 = performance.now();
+  const tick = (now) => { draw((now - t0) / 1000, false); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
