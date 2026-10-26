@@ -56,8 +56,7 @@ export default function Home() {
           <p className="sub">
             type a view like &ldquo;LeBron never retires.&rdquo; we find the
             related contracts on Polymarket and Kalshi, combine them into one
-            basket you can buy, and adjust it when news breaks before the odds
-            catch up.
+            basket you can buy, and adjust it based on the news for you
           </p>
           <Link href="/basket" className="cta">
             build a basket <span aria-hidden="true">→</span>
