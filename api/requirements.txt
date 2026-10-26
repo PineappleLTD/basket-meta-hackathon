@@ -1,0 +1,9 @@
+fastapi>=0.115
+uvicorn>=0.32
+sqlalchemy>=2.0.36
+pydantic-settings>=2.6
+httpx>=0.28
+numpy>=2.1
+
+# dev
+pytest>=8.3
