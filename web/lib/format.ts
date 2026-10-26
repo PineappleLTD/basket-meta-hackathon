@@ -1,5 +1,7 @@
 export const pct = (x: number, digits = 0) => `${(x * 100).toFixed(digits)}%`;
 
+export const usd = (x: number) => x.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
 export const signedPct = (x: number, digits = 1) => `${x >= 0 ? "+" : ""}${pct(x, digits)}`;
 
 /** A 0..1 price as cents, e.g. 0.58 -> "58¢". */
