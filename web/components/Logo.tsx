@@ -1,0 +1,16 @@
+// Same artwork as app/icon.svg, inlined so it can be sized with CSS.
+export function Logo() {
+  return (
+    <svg viewBox="12 14 76 72" aria-hidden="true">
+      <defs>
+        <clipPath id="logo-clip">
+          <path d="M14 24 Q14 16 22 16 H78 Q86 16 86 24 L80 76 Q79 84 71 84 H29 Q21 84 20 76 Z" />
+        </clipPath>
+      </defs>
+      <path d="M14 24 Q14 16 22 16 H78 Q86 16 86 24 L80 76 Q79 84 71 84 H29 Q21 84 20 76 Z" fill="#EC6636" />
+      <g clipPath="url(#logo-clip)" stroke="#FFFFFF" strokeWidth="3" fill="none">
+        <path d="M-24 0 L76 100 M0 0 L100 100 M24 0 L124 100 M76 0 L-24 100 M100 0 L0 100 M124 0 L24 100" />
+      </g>
+    </svg>
+  );
+}

@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { AuthNav } from "@/components/AuthNav";
 import { DbStatus } from "@/components/DbStatus";
 import { getToken } from "@/lib/auth";
+import { Logo } from "@/components/Logo";
 
 // Top bar for signed-in pages. Sends anyone without a token to log in.
 export function AppHeader() {
@@ -19,12 +20,12 @@ export function AppHeader() {
     <nav className="topbar">
       <div className="brand">
         <Link href="/" className="mark">
-          <i />
+          <Logo />
           basket
         </Link>
         <DbStatus />
       </div>
-      <AuthNav />
+      <AuthNav inApp />
     </nav>
   );
 }

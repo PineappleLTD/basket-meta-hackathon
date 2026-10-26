@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AuthNav } from "@/components/AuthNav";
 import { DbStatus } from "@/components/DbStatus";
 import { MarketGraph } from "@/components/MarketGraph";
+import { Logo } from "@/components/Logo";
 
 const MARKETS: [
   exchange: string,
@@ -41,7 +42,7 @@ export default function Home() {
       <nav className="topbar">
         <div className="brand">
           <span className="mark">
-            <i />
+            <Logo />
             basket
           </span>
           <DbStatus />
