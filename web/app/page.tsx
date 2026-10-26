@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { AuthNav } from "@/components/AuthNav";
+import { DbStatus } from "@/components/DbStatus";
 import { MarketGraph } from "@/components/MarketGraph";
 
 const MARKETS: [
@@ -37,16 +39,14 @@ export default function Home() {
   return (
     <main className="home">
       <nav className="topbar">
-        <span className="mark">
-          <i />
-          basket
-        </span>
-        <div className="auth">
-          <Link href="/login">log in</Link>
-          <Link href="/register" className="auth-cta">
-            register
-          </Link>
+        <div className="brand">
+          <span className="mark">
+            <i />
+            basket
+          </span>
+          <DbStatus />
         </div>
+        <AuthNav />
       </nav>
 
       <section className="welcome">
@@ -56,8 +56,7 @@ export default function Home() {
           <p className="sub">
             type a view like &ldquo;LeBron never retires.&rdquo; we find the
             related contracts on Polymarket and Kalshi, combine them into one
-            basket you can buy, and adjust it when news breaks before the odds
-            catch up.
+            basket you can buy, and adjust it based on the news for you
           </p>
           <Link href="/basket" className="cta">
             build a basket <span aria-hidden="true">→</span>
