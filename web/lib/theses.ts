@@ -48,3 +48,20 @@ export const selectPicks = (thesis: string) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ thesis }),
   });
+
+/** Starter theses on the Build page. */
+export const SUGGESTED_THESES = [
+  "AI regulation",
+  "US recession 2027",
+  "Fed cuts by March",
+  "Oil above $100",
+  "Bitcoin above $150k",
+  "Atlantic hurricane season",
+  "SpaceX IPO in 2027",
+  "Housing slowdown",
+];
+
+export const DEFAULT_THEME = SUGGESTED_THESES[0];
+
+/** Typical time to match and weight a basket. */
+export const BUILD_ETA_SECONDS = 8;
