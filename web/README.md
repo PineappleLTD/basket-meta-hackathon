@@ -1,12 +1,12 @@
 # Web
 
-Next.js front end for Basket. Pick a theme and get a weighted basket of Polymarket and Kalshi
-contracts, plus a news feed that flags a rebalance when a headline's predicted move and the
-market's actual move diverge.
+Next.js front end for Basket. Sign in, type a thesis, and get weighted Kalshi picks that
+express it, chosen by the API's `POST /theses/select`. Save the picks as a basket to track it
+under "my baskets".
 
 ## Run
 
-Needs Node 20+.
+Needs Node 20+ and the API running (see `api/README.md`).
 
 ```bash
 cd web
@@ -14,22 +14,25 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
+The API URL defaults to `http://localhost:8000`; set `NEXT_PUBLIC_API_URL` to change it. The
+API must allow this origin (`PMETF_CORS_ORIGINS`, which includes `http://localhost:3000` by
+default).
+
 `npm run build && npm start` serves the production build; `npm run typecheck` runs `tsc`.
 
 ## Layout
 
-- `app/page.tsx` – reads `?theme=`, builds the basket and news signals on the server, renders
-  the sections. The theme lives in the URL, so a basket survives refreshes and can be shared.
+- `app/page.tsx` – landing page.
+- `app/login/`, `app/register/` – both render `components/AuthForm.tsx`.
+- `app/basket/page.tsx` – thesis box and picks, with "save basket" (`POST /baskets`; a repeated
+  thesis is saved as "name (2)" since names are unique per user).
+- `app/baskets/page.tsx`, `app/baskets/[id]/page.tsx` – saved baskets, and one basket's NAV and
+  positions, with delete.
 - `app/globals.css` – all styling; palette tokens are at the top.
-- `components/` – `Hero` (with the ASCII texture), `ThemePicker`, `BasketView` (table,
-  allocation bars, stats), `NewsFeed`.
-- `lib/data.ts` – the data seam: `buildBasket(theme)` and `getNewsSignals(basket)`.
-- `lib/mock-data.ts` – mock themes, contracts and headlines behind that seam.
-- `lib/ascii.ts` – procedural value-noise texture for the hero.
-
-## Real data
-
-Implement `buildBasket(theme): Promise<Contract[]>` and
-`getNewsSignals(basket): Promise<NewsSignal[]>` (types in `lib/types.ts`) and re-export them
-from `lib/data.ts`. They run on the server, so they can call `api/` or an LLM directly, keep
-keys out of the browser, and aren't subject to CORS.
+- `components/AppHeader.tsx` – top bar for signed-in pages; redirects to `/login` without a token.
+- `components/AuthNav.tsx` – top-right log in / register, or app links and log out.
+- `components/MarketGraph.tsx` – the landing page's animated market graph.
+- `lib/auth.ts` – sign up, log in, log out, `getMe`, `authFetch` and `apiJson`. The bearer token is kept
+  in `localStorage`.
+- `lib/theses.ts`, `lib/baskets.ts` – API calls and response types.
+- `lib/format.ts` – percent, cents, date and error-message helpers.

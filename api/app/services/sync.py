@@ -2,8 +2,9 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.kalshi import MarketSource
-from app.models import Basket, BasketNav, Market, MarketPrice, utcnow
+from app.models import Account, AccountValue, Basket, BasketNav, Market, MarketPrice, utcnow
 from app.services.baskets import value_basket
+from app.services.trading import value_account
 
 # New markets get their history fetched and inserted this many at a time, so a first
 # sync of tens of thousands of markets doesn't hold millions of rows in memory at once.
@@ -14,7 +15,7 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int) -> 
     """Upsert the source's markets on external_id.
 
     At one shared timestamp, records a price point per market and a NAV point per
-    basket. Markets the source no longer returns are marked closed. Markets seen
+    basket and an equity point per trading account. Markets the source no longer returns are marked closed. Markets seen
     for the first time get `backfill_days` of daily history from the source.
     A ticker the source returns more than once is stored once, from its last copy.
     """
@@ -62,5 +63,7 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int) -> 
 
     for basket in session.scalars(select(Basket)):
         session.add(BasketNav(basket=basket, ts=now, nav=value_basket(basket).nav))
+    for account in session.scalars(select(Account)):
+        session.add(AccountValue(account=account, ts=now, equity=value_account(account).equity))
     session.commit()
     return {"created": len(new), "updated": len(fetched) - len(new), "closed": len(closed)}

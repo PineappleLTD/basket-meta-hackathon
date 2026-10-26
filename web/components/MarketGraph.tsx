@@ -17,10 +17,9 @@ const CLUSTERS: { name: string; markets: [title: string, price: number][] }[] = 
 
 const INK = new THREE.Color("#0A0A0A");
 const NODE = new THREE.Color("#A9A69E");
-const DUST = new THREE.Color("#D4D1C9");
 const ACCENT = new THREE.Color("#FF5A1F");
 
-type Kind = "core" | "hub" | "market" | "dust";
+type Kind = "core" | "hub" | "market";
 type Node = { kind: Kind; pos: THREE.Vector3; size: number; hub: number; title?: string; price?: number; label?: Label };
 type Label = { el: HTMLDivElement; price?: HTMLSpanElement; delta?: HTMLSpanElement; w: number; h: number; alpha: number; flash: number; dx: number; dy: number };
 type Signal = { market: number; t0: number; move: number };
@@ -82,10 +81,6 @@ function buildGraph() {
     }
     if (best > i) links.push([i, best]);
   }
-
-  for (let i = 0; i < 70; i++) {
-    nodes.push({ kind: "dust", pos: randUnit(rnd).multiplyScalar(2.3 + rnd() * 0.9), size: 0.012 + rnd() * 0.008, hub: -1 });
-  }
   return { nodes, edges, links, hubIds, markets };
 }
 
@@ -144,7 +139,7 @@ export function MarketGraph() {
     const dotGeo = new THREE.SphereGeometry(1, 20, 14);
     const dotMat = new THREE.MeshBasicMaterial();
     const dots = new THREE.InstancedMesh(dotGeo, dotMat, nodes.length);
-    const base = nodes.map((n) => (n.kind === "core" ? ACCENT : n.kind === "hub" ? INK : n.kind === "dust" ? DUST : NODE));
+    const base = nodes.map((n) => (n.kind === "core" ? ACCENT : n.kind === "hub" ? INK : NODE));
     spin.add(dots);
 
     // Signal pulse: a small accent dot that walks market -> hub -> core.
@@ -261,7 +256,6 @@ export function MarketGraph() {
       // Screen position and radius of every labelled or label-blocking node.
       const focal = h / (2 * Math.tan((camera.fov * Math.PI) / 360));
       const scr = nodes.map((n, i) => {
-        if (n.kind === "dust") return null;
         world.copy(n.pos).applyMatrix4(spin.matrixWorld);
         const z = world.z, r = (size[i] * focal) / (camera.position.z - z);
         ndc.copy(world).project(camera);
@@ -274,11 +268,11 @@ export function MarketGraph() {
       const fits = (b: [number, number, number, number], self: number) =>
         b[0] > 4 && b[1] > 4 && b[2] < w - 4 && b[3] < h - 4 &&
         placed.every((p) => b[2] < p[0] || b[0] > p[2] || b[3] < p[1] || b[1] > p[3]) &&
-        scr.every((d, k) => !d || k === self || d.z < -0.4 ||
+        scr.every((d, k) => k === self || d.z < -0.4 ||
           d.x + d.r < b[0] || d.x - d.r > b[2] || d.y + d.r < b[1] || d.y - d.r > b[3]);
-      const order = nodes.map((n, i) => i).filter((i) => nodes[i].label).sort((a, b) => scr[b]!.z - scr[a]!.z);
+      const order = nodes.map((n, i) => i).filter((i) => nodes[i].label).sort((a, b) => scr[b].z - scr[a].z);
       for (const i of order) {
-        const n = nodes[i], lb = n.label!, d = scr[i]!, hub = n.kind === "hub", gap = d.r + 6;
+        const n = nodes[i], lb = n.label!, d = scr[i], hub = n.kind === "hub", gap = d.r + 6;
         const offsets: [number, number][] = hub
           ? [[-lb.w / 2, -gap - lb.h], [-lb.w / 2, gap]]
           : (d.x > w * 0.62 ? [-1, 1] : [1, -1]).map((side) => [side > 0 ? gap : -gap - lb.w, -lb.h / 2]);

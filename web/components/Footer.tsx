@@ -8,8 +8,8 @@ type LinkGroup = [heading: string, links: [label: string, href: string][]];
 const LINKS: LinkGroup[] = [
   ["Product", [
     ["Build a basket", "/build"],
-    ["Sample basket", "/basket"],
-    ["News & signals", "/basket#signals"],
+    ["My baskets", "/baskets"],
+    ["News & signals", "#"],
     ["Pricing", "#"],
   ]],
   ["Learn", [
