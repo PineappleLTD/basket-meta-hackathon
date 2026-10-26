@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { UnauthorizedError } from "@/lib/auth";
 import { createBasket, listBaskets, type Basket } from "@/lib/baskets";
@@ -20,15 +20,19 @@ async function unusedName(thesis: string): Promise<string> {
   return name;
 }
 
-export default function Page() {
+type Props = { searchParams: Promise<{ theme?: string | string[] }> };
+
+// /build sends its thesis here as ?theme=..., which fills the form and starts the search.
+export default function Page({ searchParams }: Props) {
+  const { theme } = use(searchParams);
+  const initial = (Array.isArray(theme) ? theme[0] : theme)?.trim() ?? "";
   const router = useRouter();
-  const [thesis, setThesis] = useState("");
+  const [thesis, setThesis] = useState(initial);
   const [result, setResult] = useState<Selection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function submit() {
-    const text = thesis.trim();
+  async function submit(text = thesis.trim()) {
     if (text.length < 3 || busy) return;
     setBusy(true);
     setError(null);
@@ -41,6 +45,14 @@ export default function Page() {
       setBusy(false);
     }
   }
+
+  // Ref, not state: dev-mode Strict Mode runs effects twice and this must only fire once.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || initial.length < 3) return;
+    started.current = true;
+    submit(initial);
+  }, []);
 
   return (
     <main className="app">
