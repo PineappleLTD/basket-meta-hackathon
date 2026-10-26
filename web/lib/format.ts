@@ -1,11 +1,13 @@
-export const pct = (x: number, digits = 1) => `${(x * 100).toFixed(digits)}%`;
+export const pct = (x: number, digits = 0) => `${(x * 100).toFixed(digits)}%`;
 
-export const signedPct = (x: number) => `${x >= 0 ? "+" : ""}${pct(x)}`;
+export const signedPct = (x: number, digits = 1) => `${x >= 0 ? "+" : ""}${pct(x, digits)}`;
 
-/** Probability-point move as cents, e.g. 0.035 -> "+3.5¢". */
-export const cents = (move: number) => `${move >= 0 ? "+" : ""}${(move * 100).toFixed(1)}¢`;
+/** A 0..1 price as cents, e.g. 0.58 -> "58¢". */
+export const cents = (price: number) => `${Math.round(price * 100)}¢`;
 
-export const ago = (minutes: number) => (minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`);
+export const date = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
-/** 0 at $10k traded, 100 at $100M, log-scaled. */
-export const liquidityScore = (volume: number) => Math.min(100, Math.max(0, 25 * Math.log10(volume / 10_000)));
+/** Message to show for a failed API call. */
+export const errorText = (err: unknown) =>
+  err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't reach the server";

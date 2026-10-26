@@ -2,17 +2,19 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
+from app.brokers import PaperBroker
 from app.config import Settings
-from app.db import Base, make_engine
+from app.db import Base, SessionDep, make_engine
 from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
-from app.models import Market
-from app.routers import auth, baskets, markets, theses
+from app.models import AccountMode, Market
+from app.routers import accounts, auth, baskets, markets, theses
 from app.services.sync import sync_markets
 
 log = logging.getLogger(__name__)
@@ -44,6 +46,8 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
             requests_per_second=settings.kalshi_requests_per_second,
         )
         app.state.llm = make_llm(settings)
+        # Live trading registers a broker for AccountMode.LIVE here.
+        app.state.brokers = {AccountMode.PAPER: PaperBroker(settings.paper_fee_rate)}
 
         if settings.seed_on_startup and not has_markets:
             # An injected source seeds instantly; a live first sync takes about a minute,
@@ -66,9 +70,15 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
     app.include_router(markets.router)
     app.include_router(baskets.router)
     app.include_router(theses.router)
+    app.include_router(accounts.router)
 
     @app.get("/health", tags=["meta"])
-    def health():
+    def health(session: SessionDep):
+        """503 when the database can't be reached."""
+        try:
+            session.execute(text("SELECT 1"))
+        except SQLAlchemyError as e:
+            raise HTTPException(503, "Database unavailable") from e
         return {"status": "ok"}
 
     return app

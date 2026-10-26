@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { AuthNav } from "@/components/AuthNav";
+import { DbStatus } from "@/components/DbStatus";
 import { MarketGraph } from "@/components/MarketGraph";
 
 const MARKETS: [
@@ -37,16 +39,14 @@ export default function Home() {
   return (
     <main className="home">
       <nav className="topbar">
-        <span className="mark">
-          <i />
-          basket
-        </span>
-        <div className="auth">
-          <Link href="/login">log in</Link>
-          <Link href="/register" className="auth-cta">
-            register
-          </Link>
+        <div className="brand">
+          <span className="mark">
+            <i />
+            basket
+          </span>
+          <DbStatus />
         </div>
+        <AuthNav />
       </nav>
 
       <section className="welcome">
