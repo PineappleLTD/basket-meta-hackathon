@@ -30,7 +30,7 @@ a { color: inherit; text-decoration: none; }
 /* Top bar */
 .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
 .mark { display: inline-flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
-.mark i { width: 10px; height: 10px; background: var(--accent); border-radius: 1px; }
+.mark svg { width: 20px; height: 19px; flex: none; }
 .brand { display: flex; align-items: center; gap: 14px; }
 .db-status { display: inline-flex; align-items: center; gap: 6px; font: 400 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .db-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); transition: background 0.2s, box-shadow 0.2s; }
@@ -141,27 +141,64 @@ a { color: inherit; text-decoration: none; }
 .kg-label.on { box-shadow: 0 0 0 1px var(--accent); color: var(--ink); }
 .kg-label.on .kg-price { color: var(--accent); }
 
+/* App shell */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.shell { display: flex; flex-direction: column; height: 100svh; }
+.shell > .topbar { flex: none; padding: 14px 24px; }
+.shell-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
+.shell-main { min-height: 0; overflow-y: auto; }
+.pane { max-width: 760px; margin: 0 auto; padding: 0 40px 64px; }
+.pane-head { padding-top: 48px; }
+.pane-head .app-title { margin: 10px 0 0; }
+.pane-sub { margin-top: 10px; font-size: 15px; color: var(--muted); }
+
+.sidebar { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--fill); }
+.sidebar-top { display: flex; flex-direction: column; gap: 24px; padding: 20px 16px 10px; }
+.new-basket { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.new-basket span { font-size: 18px; line-height: 1; }
+.sidebar-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px; }
+.sidebar-head .mono { font-size: 11px; color: var(--faint); }
+.sidebar-note { padding: 4px 20px; font-size: 13px; color: var(--muted); }
+.sidebar-list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0 8px 16px; scrollbar-width: thin; }
+.sidebar-list a { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; padding: 10px 12px; border-radius: 4px; transition: background 0.15s; }
+.sidebar-list a:hover { background: var(--track); }
+.sidebar-list a.active { background: var(--bg); box-shadow: 0 0 0 1px var(--line); }
+.sidebar-list a.active::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 1px; background: var(--accent); }
+.sidebar-list a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sb-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 13.5px; line-height: 1.35; font-weight: 500; letter-spacing: -0.01em; }
+.sb-change { font-size: 12px; line-height: 1.6; }
+.sb-meta { grid-column: 1 / -1; font-size: 11px; color: var(--faint); }
+
 /* Thesis -> picks */
-.app { max-width: 760px; margin: 0 auto; padding: 28px 32px 64px; }
-.thesis-form { display: flex; flex-direction: column; gap: 12px; margin-top: 64px; }
+.thesis-form { display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
 .thesis-form textarea {
   padding: 14px 16px; border: 1px solid var(--line); border-radius: 4px; resize: vertical;
   background: var(--bg); color: var(--ink); font: 400 18px/1.45 var(--sans); letter-spacing: -0.01em; caret-color: var(--accent); outline: none;
 }
 .thesis-form textarea::placeholder { color: var(--faint); }
 .thesis-form textarea:focus { border-color: var(--accent); }
-.thesis-form .btn { align-self: flex-start; }
+.thesis-actions { display: flex; align-items: center; gap: 16px; }
+.thesis-hint { font-size: 11px; color: var(--faint); }
+.examples { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
+.examples-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.examples-list button {
+  padding: 7px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg);
+  color: var(--muted); font: 400 13px var(--sans); text-align: left; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.examples-list button:hover { border-color: var(--accent); color: var(--ink); }
+.examples-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn {
   height: 44px; padding: 0 22px; border: 0; border-radius: 4px;
   background: var(--ink); color: #FFFFFF; font: 500 15px var(--sans); cursor: pointer; transition: background 0.15s;
 }
 .btn:hover:not(:disabled) { background: var(--accent); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.btn:focus-visible, .text-btn:focus-visible, .basket-list a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:focus-visible, .text-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .thesis-note { margin-top: 20px; font-size: 14px; color: var(--muted); }
 
 .picks { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--ink); }
 .picks-summary { font-size: 17px; line-height: 1.5; }
+.pane-head + .picks-summary { margin-top: 14px; }
 .picks-stats { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 14px; font-size: 12px; color: var(--muted); }
 .pick-list { list-style: none; margin: 28px 0 0; padding: 0; }
 .pick-list li { padding: 18px 0; border-top: 1px solid var(--line); }
@@ -179,26 +216,38 @@ a { color: inherit; text-decoration: none; }
 .picks-saved span { display: inline-block; transition: transform 0.15s; }
 .picks-saved:hover span { transform: translateX(3px); }
 
-/* My baskets */
+/* Basket detail */
 .app-title { margin: 56px 0 16px; font-size: clamp(28px, 4vw, 40px); line-height: 1.1; letter-spacing: -0.035em; font-weight: 600; overflow-wrap: anywhere; }
 .text-link { color: var(--ink); border-bottom: 1px solid var(--line); }
 .text-link:hover { border-color: var(--accent); }
-.basket-list { list-style: none; margin: 24px 0 0; padding: 0; border-top: 1px solid var(--ink); }
-.basket-list a { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 18px 0; border-bottom: 1px solid var(--line); }
-.basket-list a:hover .basket-name { color: var(--accent); }
-.basket-name { font-size: 16px; line-height: 1.4; font-weight: 500; letter-spacing: -0.01em; overflow-wrap: anywhere; transition: color 0.15s; }
-.basket-change { font-size: 14px; }
-.basket-meta { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); }
 .down { color: var(--muted); }
 .up { color: var(--accent); }
 .text-btn { margin-top: 32px; padding: 0; border: 0; background: none; color: var(--muted); font: 400 14px var(--sans); cursor: pointer; }
 .text-btn:hover:not(:disabled) { color: var(--accent); }
 
 @media (max-width: 640px) {
-  .app { padding: 20px 16px 48px; }
-  .thesis-form { margin-top: 40px; }
-  .app-title { margin-top: 40px; }
+  .shell > .topbar { padding: 12px 16px; }
+  .pane { padding: 0 16px 48px; }
+  .pane-head { padding-top: 28px; }
   .auth { gap: 14px; font-size: 13px; }
+  .auth-email, .thesis-hint { display: none; }
+}
+
+/* Narrow screens: the sidebar becomes a strip above the page, and the page scrolls as a whole. */
+@media (max-width: 860px) {
+  .shell { height: auto; min-height: 100svh; }
+  .shell-body { display: block; }
+  .shell-main { overflow: visible; }
+  .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+  .sidebar-top { flex-direction: row-reverse; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; }
+  .new-basket { width: auto; height: 36px; padding: 0 14px; font-size: 14px; }
+  .sidebar-head { gap: 8px; padding: 0; }
+  .sidebar-note { padding: 0 16px 12px; }
+  .sidebar-list { display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 0 16px 12px; }
+  .sidebar-list li { flex: 0 0 220px; }
+  .sidebar-list a { height: 100%; background: var(--bg); box-shadow: 0 0 0 1px var(--line); }
+  .sidebar-list a.active { box-shadow: 0 0 0 1px var(--accent); }
+  .sidebar-list a.active::before { display: none; }
 }
 
 @media (max-width: 860px) {

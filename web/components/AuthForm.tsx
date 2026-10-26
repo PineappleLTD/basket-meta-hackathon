@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DbStatus } from "@/components/DbStatus";
 import { logIn, register } from "@/lib/auth";
+import { Logo } from "@/components/Logo";
 
 type Mode = "login" | "register";
 
@@ -57,7 +58,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     <main className="auth-page">
       <div className="brand">
         <Link href="/" className="mark">
-          <i />
+          <Logo />
           basket
         </Link>
         <DbStatus />

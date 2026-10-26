@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AppHeader } from "@/components/AppHeader";
+import { useBaskets } from "@/components/BasketsContext";
 import { UnauthorizedError } from "@/lib/auth";
 import { BASE_NAV, deleteBasket, getBasket, type Basket } from "@/lib/baskets";
 import { cents, date, errorText, pct, signedPct } from "@/lib/format";
@@ -10,6 +10,7 @@ import { cents, date, errorText, pct, signedPct } from "@/lib/format";
 export default function Page() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
+  const { refresh } = useBaskets();
   const [basket, setBasket] = useState<Basket | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -25,7 +26,8 @@ export default function Page() {
     setDeleting(true);
     try {
       await deleteBasket(basket.id);
-      router.push("/baskets");
+      await refresh();
+      router.push("/basket");
     } catch (err) {
       setError(errorText(err));
       setDeleting(false);
@@ -35,8 +37,7 @@ export default function Page() {
   const change = basket ? basket.nav / BASE_NAV - 1 : 0;
 
   return (
-    <main className="app">
-      <AppHeader />
+    <div className="pane">
 
       {error && (
         <p className="thesis-note auth-error" role="alert">
@@ -47,7 +48,10 @@ export default function Page() {
 
       {basket && (
         <>
-          <h1 className="app-title">{basket.name}</h1>
+          <header className="pane-head">
+            <div className="eyebrow">basket</div>
+            <h1 className="app-title">{basket.name}</h1>
+          </header>
           {basket.description && <p className="picks-summary">{basket.description}</p>}
           <div className="picks-stats mono">
             <span>
@@ -90,6 +94,6 @@ export default function Page() {
           </button>
         </>
       )}
-    </main>
+    </div>
   );
 }

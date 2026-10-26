@@ -3,11 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AppHeader } from "@/components/AppHeader";
+import { useBaskets } from "@/components/BasketsContext";
 import { UnauthorizedError } from "@/lib/auth";
 import { createBasket, listBaskets, type Basket } from "@/lib/baskets";
 import { cents, errorText, pct } from "@/lib/format";
 import { selectPicks, type Pick, type Selection } from "@/lib/theses";
+
+const EXAMPLES = [
+  "the Fed cuts rates twice before the end of 2027",
+  "LeBron never retires",
+  "AI regulation passes in the US this year",
+  "Bitcoin hits a new all-time high in 2027",
+];
 
 const sidePrice = (p: Pick) => (p.side === "yes" ? p.market.yes_price : 1 - p.market.yes_price);
 
@@ -21,6 +28,12 @@ async function unusedName(thesis: string): Promise<string> {
 }
 
 export default function Page() {
+  // Remounts the composer when "new basket" is pressed in the sidebar.
+  const { draftKey } = useBaskets();
+  return <Composer key={draftKey} />;
+}
+
+function Composer() {
   const router = useRouter();
   const [thesis, setThesis] = useState("");
   const [result, setResult] = useState<Selection | null>(null);
@@ -43,8 +56,14 @@ export default function Page() {
   }
 
   return (
-    <main className="app">
-      <AppHeader />
+    <div className="pane">
+      <header className="pane-head">
+        <div className="eyebrow">new basket</div>
+        <h1 className="app-title">what&rsquo;s your take?</h1>
+        <p className="pane-sub">
+          Describe a view in plain words. We&rsquo;ll find the markets it touches and weight them into one basket.
+        </p>
+      </header>
 
       <form
         className="thesis-form"
@@ -53,7 +72,7 @@ export default function Page() {
           submit();
         }}
       >
-        <label htmlFor="thesis" className="eyebrow">
+        <label htmlFor="thesis" className="sr-only">
           your thesis
         </label>
         <textarea
@@ -68,10 +87,26 @@ export default function Page() {
           maxLength={2000}
           autoFocus
         />
-        <button type="submit" className="btn" disabled={busy || thesis.trim().length < 3}>
-          {busy ? "finding picks…" : "find picks"}
-        </button>
+        <div className="thesis-actions">
+          <button type="submit" className="btn" disabled={busy || thesis.trim().length < 3}>
+            {busy ? "finding picks…" : "find picks"}
+          </button>
+          <span className="mono thesis-hint">⌘↵ to run</span>
+        </div>
       </form>
+
+      {!result && !busy && (
+        <div className="examples">
+          <div className="eyebrow">try one</div>
+          <div className="examples-list">
+            {EXAMPLES.map((ex) => (
+              <button key={ex} type="button" onClick={() => setThesis(ex)}>
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {busy && <p className="thesis-note">Reading the markets. This can take up to a minute.</p>}
       {error && (
@@ -81,12 +116,13 @@ export default function Page() {
       )}
 
       {result && !busy && <Picks key={result.thesis + result.summary} result={result} />}
-    </main>
+    </div>
   );
 }
 
 function Picks({ result }: { result: Selection }) {
   const router = useRouter();
+  const { refresh } = useBaskets();
   const [saved, setSaved] = useState<Basket | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +132,7 @@ function Picks({ result }: { result: Selection }) {
     setError(null);
     try {
       setSaved(await createBasket(await unusedName(result.thesis), result.summary, result.positions));
+      refresh();
     } catch (err) {
       if (err instanceof UnauthorizedError) return router.replace("/login");
       setError(errorText(err));
@@ -121,7 +158,7 @@ function Picks({ result }: { result: Selection }) {
           <div className="picks-save">
             {saved ? (
               <Link href={`/baskets/${saved.id}`} className="picks-saved">
-                saved to my baskets <span aria-hidden="true">→</span>
+                saved · open basket <span aria-hidden="true">→</span>
               </Link>
             ) : (
               <button type="button" className="btn" onClick={save} disabled={saving}>
