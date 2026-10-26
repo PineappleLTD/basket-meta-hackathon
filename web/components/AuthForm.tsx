@@ -43,7 +43,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setError(null);
     try {
       await (mode === "login" ? logIn : register)(email, password);
-      router.push("/basket");
+      router.push("/build");
     } catch (err) {
       setError(
         err instanceof Error && err.message !== "Failed to fetch"

@@ -21,7 +21,14 @@ export function AuthNav({ inApp = false }: { inApp?: boolean }) {
   if (user) {
     return (
       <div className="auth">
-        {inApp ? <span className="auth-email">{user.email}</span> : <Link href="/basket">my baskets</Link>}
+        {inApp ? (
+          <span className="auth-email">{user.email}</span>
+        ) : (
+          <>
+            <Link href="/build">new basket</Link>
+            <Link href="/basket">my baskets</Link>
+          </>
+        )}
         <button
           type="button"
           title={user.email}
