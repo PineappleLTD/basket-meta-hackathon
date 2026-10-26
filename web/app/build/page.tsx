@@ -14,7 +14,8 @@ export default async function BuildPage({ searchParams }: Props) {
 
   return (
     <div className="build">
-      <AppHeader />
+      {/* Open to everyone; /basket asks for a login when the thesis is submitted. */}
+      <AppHeader requireAuth={false} />
 
       <main className="bd-main">
         <div className="bd-kicker">
