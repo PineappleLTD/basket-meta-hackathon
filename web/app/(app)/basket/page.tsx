@@ -6,17 +6,9 @@ import { use, useEffect, useRef, useState } from "react";
 import { useBaskets } from "@/components/BasketsContext";
 import { UnauthorizedError } from "@/lib/auth";
 import { createBasket, listBaskets, type Basket } from "@/lib/baskets";
-import { cents, errorText, pct } from "@/lib/format";
-import { selectPicks, type Pick, type Selection } from "@/lib/theses";
-
-const EXAMPLES = [
-  "the Fed cuts rates twice before the end of 2027",
-  "LeBron never retires",
-  "AI regulation passes in the US this year",
-  "Bitcoin hits a new all-time high in 2027",
-];
-
-const sidePrice = (p: Pick) => (p.side === "yes" ? p.market.yes_price : 1 - p.market.yes_price);
+import { PositionLegend, PositionTable } from "@/components/PositionTable";
+import { errorText } from "@/lib/format";
+import { selectPicks, type Selection } from "@/lib/theses";
 
 // Basket names are unique per user, so a repeated thesis gets " (2)", " (3)", ...
 async function unusedName(thesis: string): Promise<string> {
@@ -71,11 +63,7 @@ function Composer({ initial }: { initial: string }) {
   return (
     <div className="pane">
       <header className="pane-head">
-        <div className="eyebrow">new basket</div>
-        <h1 className="app-title">what&rsquo;s your take?</h1>
-        <p className="pane-sub">
-          Describe a view in plain words. We&rsquo;ll find the markets it touches and weight them into one basket.
-        </p>
+        <h1 className="app-title">Thesis</h1>
       </header>
 
       <form
@@ -101,34 +89,30 @@ function Composer({ initial }: { initial: string }) {
           autoFocus
         />
         <div className="thesis-actions">
-          <button type="submit" className="btn" disabled={busy || thesis.trim().length < 3}>
+          <button
+            type="submit"
+            className="btn"
+            disabled={busy || thesis.trim().length < 3}
+          >
             {busy ? "finding picks…" : "find picks"}
           </button>
-          <span className="mono thesis-hint">⌘↵ to run</span>
         </div>
       </form>
 
-      {!result && !busy && (
-        <div className="examples">
-          <div className="eyebrow">try one</div>
-          <div className="examples-list">
-            {EXAMPLES.map((ex) => (
-              <button key={ex} type="button" onClick={() => setThesis(ex)}>
-                {ex}
-              </button>
-            ))}
-          </div>
-        </div>
+      {busy && (
+        <p className="thesis-note">
+          Reading the markets. This can take up to a minute.
+        </p>
       )}
-
-      {busy && <p className="thesis-note">Reading the markets. This can take up to a minute.</p>}
       {error && (
         <p className="thesis-note auth-error" role="alert">
           {error}
         </p>
       )}
 
-      {result && !busy && <Picks key={result.thesis + result.summary} result={result} />}
+      {result && !busy && (
+        <Picks key={result.thesis + result.summary} result={result} />
+      )}
     </div>
   );
 }
@@ -144,7 +128,13 @@ function Picks({ result }: { result: Selection }) {
     setSaving(true);
     setError(null);
     try {
-      setSaved(await createBasket(await unusedName(result.thesis), result.summary, result.positions));
+      setSaved(
+        await createBasket(
+          await unusedName(result.thesis),
+          result.summary,
+          result.positions,
+        ),
+      );
       refresh();
     } catch (err) {
       if (err instanceof UnauthorizedError) return router.replace("/login");
@@ -157,12 +147,14 @@ function Picks({ result }: { result: Selection }) {
   return (
     <section className="picks">
       <p className="picks-summary">{result.summary}</p>
-      <div className="picks-stats mono">
-        <span>{result.picks.length} picks</span>
-        <span>{result.candidates_considered} markets considered</span>
-        <span>{pct(result.volatility, 1)} daily vol</span>
-        <span>{result.diversification_ratio.toFixed(2)}× diversification</span>
-      </div>
+      {result.picks.length > 0 && (
+        <>
+          <p className="picks-stats mono">
+            {result.picks.length} markets picked from {result.candidates_considered} considered
+          </p>
+          <PositionLegend />
+        </>
+      )}
 
       {result.picks.length === 0 ? (
         <p className="thesis-note">No markets matched this thesis.</p>
@@ -171,12 +163,20 @@ function Picks({ result }: { result: Selection }) {
           <div className="picks-save">
             {saved ? (
               <Link href={`/baskets/${saved.id}`} className="picks-saved">
-                saved · open basket <span aria-hidden="true">→</span>
+                saved · open it to invest <span aria-hidden="true">→</span>
               </Link>
             ) : (
-              <button type="button" className="btn" onClick={save} disabled={saving}>
+              <button
+                type="button"
+                className="btn"
+                onClick={save}
+                disabled={saving}
+              >
                 {saving ? "saving…" : "save basket"}
               </button>
+            )}
+            {!saved && (
+              <span className="picks-hint">Saving is free. You choose how much to invest next.</span>
             )}
             {error && (
               <span className="auth-error" role="alert">
@@ -184,33 +184,15 @@ function Picks({ result }: { result: Selection }) {
               </span>
             )}
           </div>
-          <ol className="pick-list">
-            {result.picks.map((p) => (
-              <li key={`${p.market.id}-${p.side}`}>
-                <div className="pick-head">
-                  <span className="pick-q">
-                    {p.market.url ? (
-                      <a href={p.market.url} target="_blank" rel="noreferrer">
-                        {p.market.question}
-                      </a>
-                    ) : (
-                      p.market.question
-                    )}
-                  </span>
-                  <span className="mono pick-w">{pct(p.weight)}</span>
-                </div>
-                <div className="pick-meta mono">
-                  <span className={`side ${p.side}`}>{p.side}</span>
-                  <span>{cents(sidePrice(p))}</span>
-                  <span>{p.market.external_id}</span>
-                </div>
-                <p className="pick-why">{p.rationale}</p>
-                <div className="fl-track">
-                  <i style={{ width: pct(p.weight) }} />
-                </div>
-              </li>
-            ))}
-          </ol>
+          <PositionTable
+            rows={result.picks.map((p) => ({
+              market: p.market,
+              side: p.side,
+              price: p.side === "yes" ? p.market.yes_price : 1 - p.market.yes_price,
+              weight: p.weight,
+              rationale: p.rationale,
+            }))}
+          />
         </>
       )}
     </section>

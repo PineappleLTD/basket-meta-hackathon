@@ -8,9 +8,11 @@ export interface Market {
   id: number;
   external_id: string;
   question: string;
+  category: string | null;
   url: string | null;
   yes_price: number;
   volume: number;
+  closes_at: string | null;
 }
 
 export interface PositionIn {
