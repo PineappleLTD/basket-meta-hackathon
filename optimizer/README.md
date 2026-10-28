@@ -31,8 +31,19 @@ given the contracts the LLM picked, decide what share of the budget goes into ea
 | `openai_fine` | 9.01%  | 9.01%  | 0       |
 | `eu_ai_delay` | 8.04%  | 8.04%  | 0       |
 
-#Continuity
+## Workflow
 
-After the initial thesis typed by the user which works like:
+**1. Thesis → picks.** The user types a thesis. The Muse API (LLM) picks contracts from the
+markets the backend has synced from Kalshi (Polymarket planned), chooses Yes or No for each,
+and scores each pick's relevance to the thesis.
 
-User types thesis. Muse Agent API is called to 
+**2. Edge (ridge regression).** A ridge model, trained on past headlines and the price moves
+that followed, estimates how mispriced each pick is (`edge`). With no recent news, edge is 0.
+
+**3. Optimizer.** Takes each pick's relevance (LLM), edge (ridge), and market data (price,
+volume, bid-ask spread, time to resolution, price history) and returns what percentage of the
+budget goes into each pick.
+
+**4. Continuity (background, on a schedule).** Pull new headlines from a news API → tag them
+with a cheap classifier or LLM → ridge model updates `edge` → rerun the optimizer with the
+current weights. It only changes the basket when the expected gain beats the trading cost.
