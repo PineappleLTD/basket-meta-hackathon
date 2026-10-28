@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AuthNav } from "@/components/AuthNav";
 import { DbStatus } from "@/components/DbStatus";
-import { NavTabs } from "@/components/NavTabs";
 import { getToken } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 
@@ -18,7 +17,7 @@ export function AppHeader({ requireAuth = true }: { requireAuth?: boolean }) {
   }, [requireAuth, router]);
 
   return (
-    <nav className="topbar has-tabs">
+    <nav className="topbar">
       <div className="brand">
         <Link href="/" className="mark">
           <Logo />
@@ -26,8 +25,7 @@ export function AppHeader({ requireAuth = true }: { requireAuth?: boolean }) {
         </Link>
         <DbStatus />
       </div>
-      <NavTabs />
-      <AuthNav inApp />
+      <AuthNav />
     </nav>
   );
 }

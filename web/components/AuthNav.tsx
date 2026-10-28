@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getMe, logOut, type User } from "@/lib/auth";
 
-// Top-right links: log in / register, or a link into the app and log out.
-// Inside the app the sidebar does the navigating, so `inApp` shows the email instead.
-export function AuthNav({ inApp = false }: { inApp?: boolean }) {
+// Top-right of every top bar: log in / register, or the signed-in email and log out.
+// `launch` adds a button into the app (used on the landing page).
+export function AuthNav({ launch = false }: { launch?: boolean }) {
   // undefined until we've checked, so signed-in users don't see a flash of the logged-out links.
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const router = useRouter();
@@ -16,19 +16,18 @@ export function AuthNav({ inApp = false }: { inApp?: boolean }) {
     getMe().then(setUser);
   }, []);
 
-  if (user === undefined) return <div className="auth" />;
+  const launchLink = launch && (
+    <Link href="/basket" className="auth-cta">
+      launch
+    </Link>
+  );
+
+  if (user === undefined) return <div className="auth">{launchLink}</div>;
 
   if (user) {
     return (
       <div className="auth">
-        {inApp ? (
-          <span className="auth-email">{user.email}</span>
-        ) : (
-          <>
-            <Link href="/build">new basket</Link>
-            <Link href="/basket">my baskets</Link>
-          </>
-        )}
+        <span className="auth-email">{user.email}</span>
         <button
           type="button"
           title={user.email}
@@ -41,6 +40,7 @@ export function AuthNav({ inApp = false }: { inApp?: boolean }) {
         >
           log out
         </button>
+        {launchLink}
       </div>
     );
   }
@@ -48,9 +48,10 @@ export function AuthNav({ inApp = false }: { inApp?: boolean }) {
   return (
     <div className="auth">
       <Link href="/login">log in</Link>
-      <Link href="/register" className="auth-cta">
+      <Link href="/register" className={launch ? undefined : "auth-cta"}>
         register
       </Link>
+      {launchLink}
     </div>
   );
 }

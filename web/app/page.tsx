@@ -3,7 +3,6 @@ import { AuthNav } from "@/components/AuthNav";
 import { DbStatus } from "@/components/DbStatus";
 import { MarketGraph } from "@/components/MarketGraph";
 import { Logo } from "@/components/Logo";
-import { NavTabs } from "@/components/NavTabs";
 
 const MARKETS: [
   exchange: string,
@@ -40,7 +39,7 @@ function FlowArrow() {
 export default function Home() {
   return (
     <main className="home">
-      <nav className="topbar has-tabs">
+      <nav className="topbar">
         <div className="brand">
           <span className="mark">
             <Logo />
@@ -48,8 +47,7 @@ export default function Home() {
           </span>
           <DbStatus />
         </div>
-        <NavTabs />
-        <AuthNav />
+        <AuthNav launch />
       </nav>
 
       <section className="welcome">

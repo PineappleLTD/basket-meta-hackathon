@@ -20,12 +20,14 @@ const NODE = new THREE.Color("#A9A69E");
 const ACCENT = new THREE.Color("#FF5A1F");
 
 type Kind = "core" | "hub" | "market";
-type Node = { kind: Kind; pos: THREE.Vector3; size: number; hub: number; title?: string; price?: number; label?: Label };
+// `rest` is where buildGraph put the node; `pos` is where it is this frame after drifting.
+type Node = { kind: Kind; rest: THREE.Vector3; pos: THREE.Vector3; size: number; hub: number; phase: number[]; title?: string; price?: number; label?: Label };
 type Label = { el: HTMLDivElement; price?: HTMLSpanElement; delta?: HTMLSpanElement; w: number; h: number; alpha: number; flash: number; dx: number; dy: number };
-type Signal = { market: number; t0: number; move: number };
+type Signal = { market: number; t0: number; move: number; bend: THREE.Vector3 };
 
 const SIGNAL_EVERY = 2.4;
-const SIGNAL_LEN = 3.2;
+const SIGNAL_LEN = 3.6;
+const DRIFT = { core: 0.03, hub: 0.07, market: 0.05 }; // how far each kind wanders from its rest position
 const DIST = 8.2; // camera distance: leaves room for labels inside the frame
 const EDGE = 56; // px band at the frame edge where the canvas and labels fade out
 
@@ -48,9 +50,22 @@ const smooth = (a: number, b: number, x: number) => {
   return u * u * (3 - 2 * u);
 };
 
+const easeInOut = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+
+// Slow, non-repeating wander: two sines per axis at unrelated frequencies, offset per node.
+function wander(out: THREE.Vector3, p: number[], t: number, amp: number) {
+  return out.set(
+    Math.sin(t * 0.31 + p[0]) + 0.5 * Math.sin(t * 0.73 + p[1]),
+    Math.sin(t * 0.27 + p[2]) + 0.5 * Math.sin(t * 0.61 + p[3]),
+    Math.sin(t * 0.23 + p[4]) + 0.5 * Math.sin(t * 0.67 + p[5]),
+  ).multiplyScalar(amp / 1.5);
+}
+
 function buildGraph() {
   const rnd = rng(11);
-  const nodes: Node[] = [{ kind: "core", pos: new THREE.Vector3(), size: 0.1, hub: -1 }];
+  const phase = () => Array.from({ length: 6 }, () => rnd() * Math.PI * 2);
+  const node = (n: Omit<Node, "rest" | "phase">): Node => ({ ...n, rest: n.pos.clone(), phase: phase() });
+  const nodes: Node[] = [node({ kind: "core", pos: new THREE.Vector3(), size: 0.1, hub: -1 })];
   const edges: [number, number][] = [];
   const links: [number, number][] = [];
   const hubIds: number[] = [];
@@ -59,14 +74,14 @@ function buildGraph() {
   CLUSTERS.forEach((c, i) => {
     const y = 1 - ((i + 0.5) / CLUSTERS.length) * 2, r = Math.sqrt(1 - y * y), a = i * 2.39996;
     const dir = new THREE.Vector3(r * Math.cos(a), y * 0.8, r * Math.sin(a)).normalize();
-    const hub = nodes.push({ kind: "hub", pos: dir.multiplyScalar(1.35 + rnd() * 0.25), size: 0.06, hub: i, title: c.name }) - 1;
+    const hub = nodes.push(node({ kind: "hub", pos: dir.multiplyScalar(1.35 + rnd() * 0.25), size: 0.06, hub: i, title: c.name })) - 1;
     hubIds.push(hub);
     edges.push([0, hub]);
     c.markets.forEach(([title, price]) => {
       const out = nodes[hub].pos.clone().normalize();
       const dir = out.multiplyScalar(0.9).add(randUnit(rnd)).normalize();
       const pos = nodes[hub].pos.clone().addScaledVector(dir, 0.6 + rnd() * 0.35);
-      edges.push([hub, nodes.push({ kind: "market", pos, size: 0.036, hub: i, title, price }) - 1]);
+      edges.push([hub, nodes.push(node({ kind: "market", pos, size: 0.036, hub: i, title, price })) - 1]);
     });
   });
 
@@ -135,6 +150,16 @@ export function MarketGraph() {
     const edgeLines = segments(edges, "#C9C6BE");
     const linkLines = segments(links, "#E6E4DE");
     spin.add(linkLines, edgeLines);
+    // Lines follow their drifting endpoints.
+    const follow = (lines: THREE.LineSegments, pairs: [number, number][]) => {
+      const attr = lines.geometry.getAttribute("position") as THREE.BufferAttribute;
+      pairs.forEach(([a, b], k) => {
+        attr.setXYZ(k * 2, nodes[a].pos.x, nodes[a].pos.y, nodes[a].pos.z);
+        attr.setXYZ(k * 2 + 1, nodes[b].pos.x, nodes[b].pos.y, nodes[b].pos.z);
+      });
+      attr.needsUpdate = true;
+      lines.geometry.computeBoundingSphere();
+    };
 
     const dotGeo = new THREE.SphereGeometry(1, 20, 14);
     const dotMat = new THREE.MeshBasicMaterial();
@@ -196,17 +221,38 @@ export function MarketGraph() {
       const move = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.floor(Math.random() * 4));
       const n = nodes[market];
       n.price = Math.min(0.97, Math.max(0.03, n.price! + move / 100));
-      signals.push({ market, t0: t, move });
+      signals.push({ market, t0: t, move, bend: randUnit(Math.random).multiplyScalar(0.12) });
       const lb = n.label!;
       lb.price!.textContent = `${Math.round(n.price * 100)}¢`;
       lb.delta!.textContent = `${move > 0 ? "▲" : "▼"}${Math.abs(move)}`;
       lb.w = lb.el.offsetWidth;
     };
 
+    const shift = new THREE.Vector3(), mid = new THREE.Vector3();
+    let last = 0, angle = 0.6;
     const frame = (t: number) => {
-      spin.rotation.y = still ? 0.6 : t * 0.07;
-      tilt.rotation.x += (0.28 + pointer.y * 0.12 - tilt.rotation.x) * 0.04;
-      tilt.rotation.z += (-pointer.x * 0.06 - tilt.rotation.z) * 0.04;
+      const dt = Math.min(0.05, t - last); // clamp so a backgrounded tab doesn't lurch on return
+      last = t;
+      // Frame-rate independent easing toward a target: 1 - e^(-rate * dt).
+      const ease = (rate: number) => (still ? 1 : 1 - Math.exp(-rate * dt));
+
+      // The turn swells and slackens instead of running at a fixed rate; the tilt sways a little on its own.
+      angle += dt * 0.07 * (1 + 0.35 * Math.sin(t * 0.11) + 0.15 * Math.sin(t * 0.29 + 1.3));
+      spin.rotation.y = angle;
+      const sway = still ? 0 : 0.03 * Math.sin(t * 0.17);
+      tilt.rotation.x += (0.28 + sway + pointer.y * 0.12 - tilt.rotation.x) * ease(1.6);
+      tilt.rotation.z += (-pointer.x * 0.06 + sway * 0.5 - tilt.rotation.z) * ease(1.6);
+
+      // Drift: each cluster wanders as a group (markets ride on their hub) plus a little of its own.
+      if (!still) {
+        for (const n of nodes) {
+          wander(n.pos, n.phase, t, DRIFT[n.kind]);
+          if (n.kind === "market") n.pos.add(wander(shift, nodes[hubIds[n.hub]].phase, t, DRIFT.hub));
+          n.pos.add(n.rest);
+        }
+        follow(edgeLines, edges);
+        follow(linkLines, links);
+      }
       scene.updateMatrixWorld();
 
       if (!still && t > nextSignal) {
@@ -217,6 +263,10 @@ export function MarketGraph() {
       // Per-node glow from active signals: the market flashes first, its hub when the pulse lands.
       const glow = new Float32Array(nodes.length);
       const size = new Float32Array(nodes.length);
+      const kick = new Float32Array(nodes.length); // damped wobble when a node is hit
+      const hit = (i: number, age: number) => {
+        if (age > 0) kick[i] += Math.exp(-age * 6) * Math.sin(age * 18) * 0.35;
+      };
       pulse.visible = false;
       for (let k = signals.length - 1; k >= 0; k--) {
         const g = signals[k], u = (t - g.t0) / SIGNAL_LEN;
@@ -227,22 +277,32 @@ export function MarketGraph() {
           signals.splice(k, 1);
           continue;
         }
-        const hub = hubIds[nodes[g.market].hub];
-        glow[g.market] = Math.max(glow[g.market], smooth(0, 0.06, u) * (1 - smooth(0.6, 1, u)));
-        glow[hub] = Math.max(glow[hub], smooth(0.36, 0.42, u) * (1 - smooth(0.55, 0.8, u)));
+        const hub = hubIds[nodes[g.market].hub], age = t - g.t0;
+        glow[g.market] = Math.max(glow[g.market], smooth(0, 0.08, u) * (1 - smooth(0.5, 1, u)));
+        glow[hub] = Math.max(glow[hub], smooth(0.34, 0.42, u) * (1 - smooth(0.5, 0.85, u)));
+        glow[0] = Math.max(glow[0], 0.6 * smooth(0.66, 0.72, u) * (1 - smooth(0.74, 0.95, u)));
+        hit(g.market, age);
+        hit(hub, age - 0.4 * SIGNAL_LEN);
+        hit(0, age - 0.7 * SIGNAL_LEN);
         if (u > 0.08 && u < 0.7) {
-          const a = u < 0.4 ? smooth(0.08, 0.4, u) : smooth(0.4, 0.7, u);
-          const [from, to] = u < 0.4 ? [nodes[g.market].pos, nodes[hub].pos] : [nodes[hub].pos, nodes[0].pos];
-          pulse.position.lerpVectors(from, to, a);
-          pulse.scale.setScalar(0.022);
+          // Each leg eases out of one node and into the next along a slight arc, not a straight rail.
+          const leg = u < 0.4;
+          const a = easeInOut(leg ? (u - 0.08) / 0.32 : (u - 0.4) / 0.3);
+          const [from, to] = leg ? [nodes[g.market].pos, nodes[hub].pos] : [nodes[hub].pos, nodes[0].pos];
+          mid.lerpVectors(from, to, 0.5).add(g.bend);
+          pulse.position.copy(from).multiplyScalar((1 - a) * (1 - a))
+            .addScaledVector(mid, 2 * a * (1 - a)).addScaledVector(to, a * a);
+          // Swell in mid-flight, shrink into each node it reaches.
+          pulse.scale.setScalar(0.014 + 0.012 * Math.sin(a * Math.PI));
           pulse.visible = true;
         }
         nodes[g.market].label!.flash = glow[g.market];
       }
 
       nodes.forEach((n, i) => {
-        const breathe = n.kind === "core" ? 1 + 0.08 * Math.sin(t * 1.6) : 1;
-        size[i] = n.size * breathe * (1 + glow[i] * 0.7);
+        // Everything breathes a little, each on its own phase; the core most.
+        const breathe = still ? 1 : 1 + (n.kind === "core" ? 0.08 : 0.04) * Math.sin(t * (n.kind === "core" ? 1.3 : 0.9) + n.phase[0]);
+        size[i] = n.size * breathe * (1 + glow[i] * 0.7 + kick[i]);
         s.setScalar(size[i]);
         mtx.compose(n.pos, q, s);
         dots.setMatrixAt(i, mtx);
@@ -290,10 +350,10 @@ export function MarketGraph() {
           }
         }
         // Glide between sides while visible; jump while hidden so labels never sweep across the graph.
-        const k = still || lb.alpha < 0.05 ? 1 : 0.18;
+        const k = lb.alpha < 0.05 ? 1 : ease(9);
         lb.dx += (off[0] - lb.dx) * k;
         lb.dy += (off[1] - lb.dy) * k;
-        lb.alpha = still ? target : lb.alpha + (target - lb.alpha) * 0.1;
+        lb.alpha += (target - lb.alpha) * ease(5);
         const st = lb.el.style;
         st.opacity = Math.max(lb.alpha, lb.flash * (target > 0 ? 1 : 0)).toFixed(3);
         st.transform = `translate3d(${(d.x + lb.dx).toFixed(1)}px, ${(d.y + lb.dy).toFixed(1)}px, 0)`;
