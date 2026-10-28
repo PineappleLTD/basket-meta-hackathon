@@ -12,6 +12,7 @@ given the contracts the LLM picked, decide what share of the budget goes into ea
 
 
 **inputs to add**: 
+
 *Time to resolution:* Right now an 8-point edge counts the same whether the market settles next week or next year. Dividing edge by days to expiry favors contracts that pay off sooner, so money isn’t locked up for months for the same profit.
 
 *Bid-ask spread:* Buying costs more than the listed price because you pay the spread, and that eats into the edge. Subtracting it from expected return means contracts with wide spreads need a bigger edge to earn weight.
