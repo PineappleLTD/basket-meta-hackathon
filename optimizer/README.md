@@ -18,11 +18,15 @@ given the contracts the LLM picked, decide what share of the budget goes into ea
 *Bid-ask spread:* Buying costs more than the listed price because you pay the spread, and that eats into the edge. Subtracting it from expected return means contracts with wide spreads need a bigger edge to earn weight.
 
 
-**initial results (on mock data) **:
-Headline arrives: impact model says us_ai_bill is underpriced by 8 points
-  market_id  weight_before  weight_after  change
-chip_export         0.2214        0.2214  0.0000
-  eu_ai_act         0.2196        0.2196  0.0000
- us_ai_bill         0.1962        0.2500  0.0538
-openai_fine         0.0901        0.0901  0.0000
-eu_ai_delay         0.0804        0.0804  0.0000
+**initial results (on mock data)**:
+
+
+**Headline arrives:** impact model says `us_ai_bill` is underpriced by 8 points.
+
+| Contract      | Before | After  | Change  |
+| ------------- | ------ | ------ | ------- |
+| `chip_export` | 22.14% | 22.14% | 0       |
+| `eu_ai_act`   | 21.96% | 21.96% | 0       |
+| `us_ai_bill`  | 19.62% | 25.00% | **+5.38** |
+| `openai_fine` | 9.01%  | 9.01%  | 0       |
+| `eu_ai_delay` | 8.04%  | 8.04%  | 0       |
