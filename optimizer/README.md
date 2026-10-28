@@ -30,3 +30,9 @@ given the contracts the LLM picked, decide what share of the budget goes into ea
 | `us_ai_bill`  | 19.62% | 25.00% | **+5.38** |
 | `openai_fine` | 9.01%  | 9.01%  | 0       |
 | `eu_ai_delay` | 8.04%  | 8.04%  | 0       |
+
+#Continuity
+
+After the initial thesis typed by the user which works like:
+
+User types thesis. Muse Agent API is called to 
