@@ -1,10 +1,6 @@
 import { apiJson } from "./auth";
 import type { Side } from "./theses";
 
-// Mock for the public Build page, which renders on the server without the user's token.
-/** Cash available to the signed-in account, in USD. */
-export const ACCOUNT_BALANCE = 2500;
-
 // Mirrors AccountOut, TradePreview and TradeResult in api/app/schemas.py (fields this UI uses).
 
 export type AccountMode = "paper" | "live";

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { getMe, logOut, type User } from "@/lib/auth";
 
-// Top-right of every top bar: log in / register, or the signed-in email and log out.
+// Top-right of every top bar: the theme toggle, then log in / register, or the signed-in email and log out.
 // `launch` adds a button into the app (used on the landing page).
 export function AuthNav({ launch = false }: { launch?: boolean }) {
   // undefined until we've checked, so signed-in users don't see a flash of the logged-out links.
@@ -22,11 +23,17 @@ export function AuthNav({ launch = false }: { launch?: boolean }) {
     </Link>
   );
 
-  if (user === undefined) return <div className="auth">{launchLink}</div>;
+  if (user === undefined) return (
+      <div className="auth">
+        <ThemeToggle />
+        {launchLink}
+      </div>
+    );
 
   if (user) {
     return (
       <div className="auth">
+        <ThemeToggle />
         <span className="auth-email">{user.email}</span>
         <button
           type="button"
@@ -47,6 +54,7 @@ export function AuthNav({ launch = false }: { launch?: boolean }) {
 
   return (
     <div className="auth">
+      <ThemeToggle />
       <Link href="/login">log in</Link>
       <Link href="/register" className={launch ? undefined : "auth-cta"}>
         register

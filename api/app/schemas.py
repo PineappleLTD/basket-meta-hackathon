@@ -83,7 +83,8 @@ class PositionIn(BaseModel):
 
 
 class BasketIn(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    # Omit to have a model name the basket from its description and markets.
+    name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     positions: list[PositionIn] = Field(min_length=1, max_length=50)
 

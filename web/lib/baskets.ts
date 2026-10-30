@@ -28,11 +28,15 @@ export const listBaskets = () => apiJson<Basket[]>("/baskets");
 
 export const getBasket = (id: number | string) => apiJson<Basket>(`/baskets/${id}`);
 
-export const createBasket = (name: string, description: string, positions: PositionIn[]) =>
+// A null name saves as "New basket"; titleBasket then names it.
+export const createBasket = (name: string | null, description: string, positions: PositionIn[]) =>
   apiJson<Basket>("/baskets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, description, positions }),
   });
+
+// Renames the basket to a short model-written title. Takes about a second.
+export const titleBasket = (id: number) => apiJson<Basket>(`/baskets/${id}/title`, { method: "POST" });
 
 export const deleteBasket = (id: number) => apiJson<void>(`/baskets/${id}`, { method: "DELETE" });

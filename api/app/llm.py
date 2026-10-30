@@ -41,8 +41,17 @@ def parse_json_object(text: str) -> dict:
 
 
 class MetaLlama:
-    def __init__(self, api_key: str, model: str, base_url: str = LLAMA_BASE_URL, http: httpx.Client | None = None):
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str = LLAMA_BASE_URL,
+        http: httpx.Client | None = None,
+        reasoning_effort: str | None = None,
+    ):
+        """`reasoning_effort` ("minimal" ... "max") trades answer quality for speed; None uses the model default."""
         self.model = model
+        self.reasoning_effort = reasoning_effort
         self._http = http or httpx.Client(
             base_url=base_url, timeout=90, headers={"Authorization": f"Bearer {api_key}"}
         )
@@ -54,6 +63,8 @@ class MetaLlama:
             "temperature": 0.2,
             "response_format": {"type": "json_schema", "json_schema": {"name": "reply", "schema": schema}},
         }
+        if self.reasoning_effort:
+            body["reasoning_effort"] = self.reasoning_effort
         resp = self._post("/chat/completions", body)
         try:
             content = resp["choices"][0]["message"]["content"]
