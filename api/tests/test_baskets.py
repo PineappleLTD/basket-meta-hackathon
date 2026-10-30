@@ -1,6 +1,8 @@
 import pytest
 
+from app.llm import LLMError
 from app.models import Market
+from tests.conftest import signup
 
 
 def _market_ids(client, n):
@@ -97,3 +99,53 @@ def test_delete_basket(client):
     assert client.delete(f"/baskets/{basket['id']}").status_code == 204
     assert client.get(f"/baskets/{basket['id']}").status_code == 404
     assert client.get("/baskets").json() == []
+
+
+class FakeNamer:
+    def __init__(self, reply=None, error=None):
+        self.reply, self.error, self.calls = reply, error, []
+
+    def complete_json(self, system, user, schema):
+        self.calls.append(user)
+        if self.error:
+            raise self.error
+        return self.reply
+
+
+def test_unnamed_basket_saves_as_placeholder_then_is_titled(app, client):
+    namer = app.state.namer = FakeNamer({"name": "Rate Cut Bets."})
+    ids = _market_ids(client, 2)
+    body = {"description": "Rates fall.", "positions": [{"market_id": i} for i in ids]}
+    first = client.post("/baskets", json=body).json()
+    second = client.post("/baskets", json=body).json()
+    assert (first["name"], second["name"]) == ("New basket", "New basket (2)")
+    assert namer.calls == []
+
+    assert client.post(f"/baskets/{first['id']}/title").json()["name"] == "Rate Cut Bets"
+    assert "Rates fall." in namer.calls[0]
+    assert client.post(f"/baskets/{second['id']}/title").json()["name"] == "Rate Cut Bets (2)"
+    # Retitling keeps its own name rather than counting it as taken.
+    assert client.post(f"/baskets/{first['id']}/title").json()["name"] == "Rate Cut Bets"
+    assert client.get(f"/baskets/{first['id']}").json()["name"] == "Rate Cut Bets"
+
+
+def test_title_falls_back_to_description_then_market(app, client):
+    ids = _market_ids(client, 1)
+    body = {"description": "Rates fall.", "positions": [{"market_id": ids[0]}]}
+
+    def titled(body):
+        return client.post(f"/baskets/{client.post('/baskets', json=body).json()['id']}/title").json()["name"]
+
+    app.state.namer = FakeNamer(error=LLMError("down"))
+    assert titled(body) == "Rates fall."
+    app.state.namer = None
+    assert titled(body) == "Rates fall. (2)"
+    question = client.get(f"/markets/{ids[0]}").json()["question"]
+    del body["description"]
+    assert titled(body) == question
+
+
+def test_title_is_owner_only(client):
+    basket = _create(client, [{"market_id": _market_ids(client, 1)[0]}]).json()
+    client.headers.update(signup(client, "other@example.com"))
+    assert client.post(f"/baskets/{basket['id']}/title").status_code == 404

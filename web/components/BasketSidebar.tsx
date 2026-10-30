@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BasketName } from "@/components/BasketName";
 import { useBaskets } from "@/components/BasketsContext";
 import { BASE_NAV } from "@/lib/baskets";
 import { signedPct } from "@/lib/format";
@@ -9,7 +10,7 @@ import { signedPct } from "@/lib/format";
 // Left rail of the app: start a new basket, or jump to a saved one.
 export function BasketSidebar() {
   const pathname = usePathname();
-  const { baskets, error, newDraft } = useBaskets();
+  const { baskets, error, newDraft, titles } = useBaskets();
 
   return (
     <aside className="sidebar">
@@ -43,7 +44,9 @@ export function BasketSidebar() {
                   className={pathname === href ? "active" : undefined}
                   aria-current={pathname === href ? "page" : undefined}
                 >
-                  <span className="sb-name">{b.name}</span>
+                  <span className="sb-name">
+                    <BasketName name={b.name} state={titles[b.id]} />
+                  </span>
                   <span className={`mono sb-change ${change < 0 ? "down" : "up"}`}>{signedPct(change)}</span>
                   <span className="mono sb-meta">{b.positions.length} positions</span>
                 </Link>

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select
 
 from app.auth import CurrentUser
@@ -10,6 +10,7 @@ from app.models import Basket, BasketNav, Holding, utcnow
 from app.routers.common import HistoryLimit, history, owned_basket
 from app.schemas import BasketIn, BasketOut, MarketOut, NavPoint, PositionOut, RebalancePlan, RebalanceResult, TradeOut
 from app.services import baskets as svc
+from app.services import naming
 
 router = APIRouter(prefix="/baskets", tags=["baskets"])
 
@@ -58,20 +59,44 @@ def list_baskets(session: SessionDep, user: CurrentUser):
     return [_basket_out(b) for b in baskets]
 
 
+def _taken_names(session, user, exclude_id: int | None = None) -> set[str]:
+    query = select(Basket.name).where(Basket.owner_id == user.id)
+    if exclude_id is not None:
+        query = query.where(Basket.id != exclude_id)
+    return set(session.scalars(query))
+
+
 @router.post("", response_model=BasketOut, status_code=201)
 def create_basket(body: BasketIn, session: SessionDep, user: CurrentUser):
-    if session.scalar(select(Basket.id).where(Basket.owner_id == user.id, Basket.name == body.name)) is not None:
+    """Without a `name`, saves as "New basket"; POST /baskets/{id}/title then names it."""
+    if body.name is not None and session.scalar(
+        select(Basket.id).where(Basket.owner_id == user.id, Basket.name == body.name)
+    ) is not None:
         raise HTTPException(409, "You already have a basket with that name")
     try:
         positions = svc.build_positions(session, body.positions)
     except svc.BasketError as e:
         raise HTTPException(422, str(e)) from e
 
-    basket = Basket(owner_id=user.id, name=body.name, description=body.description, positions=positions)
+    name = body.name or naming.unused_name(naming.PLACEHOLDER_NAME, _taken_names(session, user))
+    basket = Basket(owner_id=user.id, name=name, description=body.description, positions=positions)
     valuation = svc.value_basket(basket)
     session.add_all([basket, BasketNav(basket=basket, ts=utcnow(), nav=valuation.nav)])
     session.commit()
     return _basket_out(basket, valuation)
+
+
+@router.post("/{basket_id}/title", response_model=BasketOut)
+def title_basket(basket_id: int, request: Request, session: SessionDep, user: CurrentUser):
+    """Rename the basket to a short model-written title (about a second; a taken title gets " (2)").
+
+    Falls back to the description, else the first market, when the model is unavailable.
+    """
+    basket = owned_basket(session, user, basket_id)
+    suggested = naming.suggest_name(request.app.state.namer, basket.description, basket.positions)
+    basket.name = naming.unused_name(suggested, _taken_names(session, user, exclude_id=basket.id))
+    session.commit()
+    return _basket_out(basket)
 
 
 @router.get("/{basket_id}", response_model=BasketOut)

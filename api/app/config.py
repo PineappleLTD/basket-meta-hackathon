@@ -36,3 +36,5 @@ class Settings(BaseSettings):
     meta_api_key: str | None = Field(default=None, validation_alias=AliasChoices("META", "PMETF_META_API_KEY"))
     llama_model: str = "muse-spark-1.3"
     llama_base_url: str = "https://api.meta.ai/v1"
+    # Names saved baskets. Run at minimal reasoning so a save waits about a second.
+    llama_namer_model: str = "muse-spark-1.1"

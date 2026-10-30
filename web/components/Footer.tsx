@@ -7,7 +7,7 @@ type LinkGroup = [heading: string, links: [label: string, href: string][]];
 // The last group is the legal row in the bottom bar; the rest are the link columns.
 const LINKS: LinkGroup[] = [
   ["Product", [
-    ["Build a basket", "/build"],
+    ["Build a basket", "/basket"],
     ["My baskets", "/baskets"],
     ["News & signals", "#"],
     ["Pricing", "#"],

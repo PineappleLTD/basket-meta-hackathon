@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { UnauthorizedError } from "@/lib/auth";
-import { listBaskets, type Basket } from "@/lib/baskets";
+import { listBaskets, titleBasket, type Basket } from "@/lib/baskets";
 import { errorText } from "@/lib/format";
 
 interface BasketsState {
@@ -11,10 +11,18 @@ interface BasketsState {
   baskets: Basket[] | null;
   error: string | null;
   refresh: () => Promise<void>;
+  // Shows a just-saved basket under its placeholder name, then swaps in its generated title.
+  addUntitled: (basket: Basket) => void;
+  // "pending" while a basket's title is being generated, "typing" once it arrives (the UI types it out).
+  titles: Record<number, TitleState>;
   // Bumped by "new basket" so the composer resets even when it's already open.
   draftKey: number;
   newDraft: () => void;
 }
+
+const TYPING_CLEAR_MS = 3000;
+
+export type TitleState = "pending" | "typing";
 
 const BasketsContext = createContext<BasketsState | null>(null);
 
@@ -24,6 +32,7 @@ export function BasketsProvider({ children }: { children: React.ReactNode }) {
   const [baskets, setBaskets] = useState<Basket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState(0);
+  const [titles, setTitles] = useState<Record<number, TitleState>>({});
 
   const refresh = useCallback(async () => {
     try {
@@ -35,6 +44,23 @@ export function BasketsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
+  const addUntitled = useCallback(async (basket: Basket) => {
+    const setTitle = (state: TitleState | null) =>
+      setTitles(({ [basket.id]: _, ...rest }) => (state ? { ...rest, [basket.id]: state } : rest));
+    setBaskets((prev) => [basket, ...(prev ?? []).filter((b) => b.id !== basket.id)]);
+    setTitle("pending");
+    try {
+      const { name } = await titleBasket(basket.id);
+      setBaskets((prev) => prev?.map((b) => (b.id === basket.id ? { ...b, name } : b)) ?? prev);
+      setTitle("typing");
+      // Long enough to finish typing; after that, pages opened later show the title as-is.
+      setTimeout(() => setTitle(null), TYPING_CLEAR_MS);
+    } catch {
+      // Keeps the placeholder name; nothing else depends on the title.
+      setTitle(null);
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -45,7 +71,7 @@ export function BasketsProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <BasketsContext.Provider value={{ baskets, error, refresh, draftKey, newDraft }}>{children}</BasketsContext.Provider>
+    <BasketsContext.Provider value={{ baskets, error, refresh, addUntitled, titles, draftKey, newDraft }}>{children}</BasketsContext.Provider>
   );
 }
 

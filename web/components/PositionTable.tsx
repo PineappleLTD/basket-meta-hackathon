@@ -28,7 +28,9 @@ export function PositionTable({ rows }: { rows: PositionRow[] }) {
       {rows.map((r) => (
         <div className="pt-row" role="row" key={`${r.market.id}-${r.side}`}>
           <div className="pt-market" role="cell">
-            <p className="pt-q">{r.market.question}</p>
+            <p className="pt-q" title={r.market.question}>
+              {r.market.question}
+            </p>
             <p className="pt-sub mono">
               {[r.market.category, r.market.closes_at && `closes ${date(r.market.closes_at)}`]
                 .filter(Boolean)

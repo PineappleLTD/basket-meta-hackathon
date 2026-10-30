@@ -15,8 +15,6 @@ const CLUSTERS: { name: string; markets: [title: string, price: number][] }[] = 
   { name: "Trade", markets: [["Tariffs stay above 15%", 0.64], ["US–China trade deal", 0.18], ["Chip tariffs by June", 0.45]] },
 ];
 
-const INK = new THREE.Color("#0A0A0A");
-const NODE = new THREE.Color("#A9A69E");
 const ACCENT = new THREE.Color("#FF5A1F");
 
 type Kind = "core" | "hub" | "market";
@@ -132,7 +130,8 @@ export function MarketGraph() {
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xffffff, 6.4, 10.8); // far side of the graph fades into the page
+    const fog = new THREE.Fog(0xffffff, 6.4, 10.8); // far side of the graph fades into the page
+    scene.fog = fog;
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 50);
     camera.position.set(0, 0, DIST);
 
@@ -142,13 +141,13 @@ export function MarketGraph() {
     tilt.add(spin);
     scene.add(tilt);
 
-    const segments = (pairs: [number, number][], color: string) => {
+    const segments = (pairs: [number, number][]) => {
       const pts = pairs.flatMap(([a, b]) => [nodes[a].pos, nodes[b].pos]);
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color }));
+      return new THREE.LineSegments(geo, new THREE.LineBasicMaterial());
     };
-    const edgeLines = segments(edges, "#C9C6BE");
-    const linkLines = segments(links, "#E6E4DE");
+    const edgeLines = segments(edges);
+    const linkLines = segments(links);
     spin.add(linkLines, edgeLines);
     // Lines follow their drifting endpoints.
     const follow = (lines: THREE.LineSegments, pairs: [number, number][]) => {
@@ -164,7 +163,19 @@ export function MarketGraph() {
     const dotGeo = new THREE.SphereGeometry(1, 20, 14);
     const dotMat = new THREE.MeshBasicMaterial();
     const dots = new THREE.InstancedMesh(dotGeo, dotMat, nodes.length);
-    const base = nodes.map((n) => (n.kind === "core" ? ACCENT : n.kind === "hub" ? INK : NODE));
+    // Colors come from the page's theme tokens; repaint mutates these in place when the theme flips.
+    const ink = new THREE.Color(), node = new THREE.Color();
+    const base = nodes.map((n) => (n.kind === "core" ? ACCENT : n.kind === "hub" ? ink : node));
+    const repaint = () => {
+      const css = getComputedStyle(document.documentElement);
+      const token = (name: string) => new THREE.Color(css.getPropertyValue(name).trim());
+      ink.copy(token("--ink"));
+      node.copy(token("--faint"));
+      linkLines.material.color.copy(token("--line"));
+      edgeLines.material.color.copy(token("--line")).lerp(node, 0.4);
+      fog.color.copy(token("--bg"));
+    };
+    repaint();
     spin.add(dots);
 
     // Signal pulse: a small accent dot that walks market -> hub -> core.
@@ -372,6 +383,12 @@ export function MarketGraph() {
       visible = e.isIntersecting;
       if (visible && !raf && !still) raf = requestAnimationFrame(loop);
     });
+    const themeWatch = new MutationObserver(() => {
+      repaint();
+      if (still) frame(0);
+    });
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
     if (still) frame(0);
     else {
       io.observe(host);
@@ -382,6 +399,7 @@ export function MarketGraph() {
       cancelAnimationFrame(raf);
       io.disconnect();
       ro.disconnect();
+      themeWatch.disconnect();
       window.removeEventListener("pointermove", onMove);
       [edgeLines, linkLines].forEach((l) => { l.geometry.dispose(); (l.material as THREE.Material).dispose(); });
       dotGeo.dispose();

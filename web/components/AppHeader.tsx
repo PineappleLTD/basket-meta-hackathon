@@ -8,13 +8,13 @@ import { DbStatus } from "@/components/DbStatus";
 import { getToken } from "@/lib/auth";
 import { Logo } from "@/components/Logo";
 
-// Top bar for app pages. Sends anyone without a token to log in, unless the page is public.
-export function AppHeader({ requireAuth = true }: { requireAuth?: boolean }) {
+// Top bar for app pages. Sends anyone without a token to log in.
+export function AppHeader() {
   const router = useRouter();
 
   useEffect(() => {
-    if (requireAuth && !getToken()) router.replace("/login");
-  }, [requireAuth, router]);
+    if (!getToken()) router.replace("/login");
+  }, [router]);
 
   return (
     <nav className="topbar">

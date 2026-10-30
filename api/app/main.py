@@ -26,6 +26,14 @@ def make_llm(settings: Settings) -> LLM | None:
     return MetaLlama(settings.meta_api_key, settings.llama_model, settings.llama_base_url)
 
 
+def make_namer(settings: Settings) -> LLM | None:
+    if not settings.meta_api_key:
+        return None
+    return MetaLlama(
+        settings.meta_api_key, settings.llama_namer_model, settings.llama_base_url, reasoning_effort="minimal"
+    )
+
+
 def create_app(settings: Settings | None = None, market_source: MarketSource | None = None) -> FastAPI:
     """`market_source` replaces the live Kalshi API, e.g. with a fake in tests."""
     settings = settings or Settings()
@@ -46,6 +54,7 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
             requests_per_second=settings.kalshi_requests_per_second,
         )
         app.state.llm = make_llm(settings)
+        app.state.namer = make_namer(settings)
         # Live trading registers a broker for AccountMode.LIVE here.
         app.state.brokers = {AccountMode.PAPER: PaperBroker(settings.paper_fee_rate)}
 
