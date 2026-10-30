@@ -1,6 +1,8 @@
 # optimizer
 given the contracts the LLM picked, decide what share of the budget goes into each.
 
+utilizing mean-variance optimization (Markowitz)
+
 ## input 
 | Column      | Meaning                                              |
 | ----------- | ---------------------------------------------------- |
