@@ -6,7 +6,7 @@ import cvxpy as cp
 def logit(p):
     p = np.clip(p, 0.01, 0.99)
     return np.log(p / (1 - p))
- 
+
  
 def build_covariance(basket, price_hist, shrink=0.2):
     """Covariance of $1 returns across contracts.
