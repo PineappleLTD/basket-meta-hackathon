@@ -1,6 +1,7 @@
 import logging
 import threading
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,14 +9,14 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
-from app.brokers import PaperBroker
+from app.brokers import Broker, BookSource, PaperBroker
 from app.config import Settings
 from app.db import Base, SessionDep, make_engine
 from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
 from app.models import AccountMode, Market
 from app.routers import accounts, auth, baskets, markets, theses
-from app.services.sync import sync_markets
+from app.services.sync import refresh
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +33,17 @@ def make_namer(settings: Settings) -> LLM | None:
     return MetaLlama(
         settings.meta_api_key, settings.llama_namer_model, settings.llama_base_url, reasoning_effort="minimal"
     )
+
+
+def make_brokers(settings: Settings, books: BookSource) -> dict[AccountMode, Broker]:
+    # Live trading registers a broker for AccountMode.LIVE here.
+    paper = PaperBroker(
+        settings.paper_fee_rate,
+        books,
+        max_quote_age=timedelta(minutes=settings.paper_max_quote_age_minutes),
+        cache_seconds=settings.paper_quote_cache_seconds,
+    )
+    return {AccountMode.PAPER: paper}
 
 
 def create_app(settings: Settings | None = None, market_source: MarketSource | None = None) -> FastAPI:
@@ -55,8 +67,7 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
         )
         app.state.llm = make_llm(settings)
         app.state.namer = make_namer(settings)
-        # Live trading registers a broker for AccountMode.LIVE here.
-        app.state.brokers = {AccountMode.PAPER: PaperBroker(settings.paper_fee_rate)}
+        app.state.brokers = make_brokers(settings, app.state.market_source)
 
         if settings.seed_on_startup and not has_markets:
             # An injected source seeds instantly; a live first sync takes about a minute,
@@ -65,7 +76,11 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
                 _seed(app)
             else:
                 threading.Thread(target=_seed, args=(app,), daemon=True).start()
+        stop = threading.Event()
+        if settings.sync_interval_minutes > 0:
+            threading.Thread(target=_schedule, args=(app, stop), daemon=True).start()
         yield
+        stop.set()
         engine.dispose()
 
     app = FastAPI(title="Prediction Market ETF API", version="0.1.0", lifespan=lifespan)
@@ -93,13 +108,31 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
     return app
 
 
+def _refresh(app: FastAPI) -> dict[str, int]:
+    """Sync and run automations. The caller holds app.state.sync_lock."""
+    with app.state.sessionmaker() as session:
+        return refresh(session, app.state.market_source, app.state.brokers, app.state.settings.backfill_days)
+
+
 def _seed(app: FastAPI) -> None:
-    with app.state.sync_lock, app.state.sessionmaker() as session:
+    with app.state.sync_lock:
         try:
-            counts = sync_markets(session, app.state.market_source, app.state.settings.backfill_days)
-            log.info("Seeded markets: %s", counts)
+            log.info("Seeded markets: %s", _refresh(app))
         except Exception:
             log.exception("Seeding markets failed; call POST /markets/sync to retry")
+
+
+def _schedule(app: FastAPI, stop: threading.Event) -> None:
+    """Sync every sync_interval_minutes until `stop`, skipping a turn while another sync runs."""
+    while not stop.wait(app.state.settings.sync_interval_minutes * 60):
+        if not app.state.sync_lock.acquire(blocking=False):
+            continue
+        try:
+            log.info("Scheduled sync: %s", _refresh(app))
+        except Exception:
+            log.exception("Scheduled sync failed; trying again next interval")
+        finally:
+            app.state.sync_lock.release()
 
 
 app = create_app()

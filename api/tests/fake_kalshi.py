@@ -4,7 +4,7 @@ import math
 import random
 from datetime import UTC, datetime, timedelta
 
-from app.kalshi.base import MarketData, PriceHistory
+from app.kalshi.base import MarketData, OrderBook, PriceHistory
 
 
 # Shared shocks that move groups of markets together. A market's loading scales its
@@ -32,6 +32,9 @@ VOLATILITY = 0.08
 IDIOSYNCRATIC = 0.5
 # Quotes sit this far either side of the price.
 HALF_SPREAD = 0.005
+# Each side of the book rests BOOK_DEPTH contracts at each of BOOK_LEVELS prices, a cent apart.
+BOOK_LEVELS = 5
+BOOK_DEPTH = 500.0
 
 
 def _logit(p: float) -> float:
@@ -49,12 +52,45 @@ class FakeKalshi:
     Markets that share a factor move together, which gives the price history
     real correlation structure. The first fetch returns the starting prices;
     each later fetch advances the walk one step.
+
+    Order books rest BOOK_DEPTH contracts at each of BOOK_LEVELS cents from the
+    quotes outward; set `books[ticker]` to replace one. `resolve` takes a market
+    off the listing with a result, as Kalshi does once it closes and settles.
     """
 
     def __init__(self, seed: int | None = None):
         self._rng = random.Random(seed)
         self._prices = {f[0]: f[3] for f in _FIXTURES}
         self._fetched = False
+        self.books: dict[str, OrderBook] = {}
+        self.results: dict[str, float] = {}
+        # Set to an exception to make order book fetches fail with it.
+        self.books_error: Exception | None = None
+
+    def resolve(self, ticker: str, payout: float) -> None:
+        self.results[ticker] = payout
+
+    def fetch_orderbooks(self, tickers: list[str]) -> dict[str, OrderBook]:
+        if self.books_error:
+            raise self.books_error
+        books = {}
+        for t in tickers:
+            if t in self.books:
+                books[t] = self.books[t]
+            elif t in self._prices and t not in self.results:
+                bid, ask = self._quotes(t)
+                books[t] = OrderBook(
+                    yes_bids=tuple((round(bid - i / 100, 4), BOOK_DEPTH) for i in range(BOOK_LEVELS)),
+                    no_bids=tuple((round(1 - ask - i / 100, 4), BOOK_DEPTH) for i in range(BOOK_LEVELS)),
+                )
+        return books
+
+    def fetch_results(self, tickers: list[str]) -> dict[str, float]:
+        return {t: self.results[t] for t in tickers if t in self.results}
+
+    def _quotes(self, ticker: str) -> tuple[float, float]:
+        price = self._prices[ticker]
+        return round(price - HALF_SPREAD, 4), round(price + HALF_SPREAD, 4)
 
     def fetch_markets(self) -> list[MarketData]:
         if self._fetched:
@@ -66,12 +102,13 @@ class FakeKalshi:
                 question=question,
                 category=category,
                 yes_price=self._prices[external_id],
-                yes_bid=round(self._prices[external_id] - HALF_SPREAD, 4),
-                yes_ask=round(self._prices[external_id] + HALF_SPREAD, 4),
+                yes_bid=self._quotes(external_id)[0],
+                yes_ask=self._quotes(external_id)[1],
                 volume=float(volume),
                 closes_at=datetime.fromisoformat(closes).replace(tzinfo=UTC),
             )
             for external_id, question, category, _, volume, closes, _, _ in _FIXTURES
+            if external_id not in self.results
         ]
 
     def fetch_history(self, tickers: list[str], days: int) -> PriceHistory:

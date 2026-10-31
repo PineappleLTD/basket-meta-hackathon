@@ -4,6 +4,10 @@ A basket is a set of market outcomes with target weights. At creation (and
 after each rebalance) units are set so that each position's value equals
 target_weight * NAV. Prices then move, values drift away from target, and a
 rebalance trades units back to target at the current NAV.
+
+A position whose market has closed keeps its last price, and once the market
+resolves, its payout, so it sits in the basket like cash and NAV doesn't jump.
+The next rebalance takes it out and spreads its weight over the open positions.
 """
 
 import math
@@ -75,13 +79,22 @@ def resolve_weights(weights: list[float | None]) -> list[float]:
     return [w / total for w in weights]
 
 
-def _target_units(position: BasketPosition, nav: float) -> float:
+def _target_units(position: BasketPosition, nav: float, weight: float) -> float:
     price = position.market.price_for(position.side)
     if price < MIN_PRICE:
         raise BasketError(
             f"Market {position.market.id} {position.side} price {price:.4f} is too low to size a position"
         )
-    return nav * position.target_weight / price
+    return nav * weight / price
+
+
+def rebalanced_weights(basket: Basket) -> dict[int, float]:
+    """Target weight per position id after a rebalance: open positions' targets scaled to sum to 1."""
+    open_positions = [p for p in basket.positions if p.market.is_open]
+    if not open_positions:
+        raise BasketError("Every market in this basket has closed")
+    total = sum(p.target_weight for p in open_positions)
+    return {p.id: p.target_weight / total for p in open_positions}
 
 
 def build_positions(session: Session, specs: list[PositionIn]) -> list[BasketPosition]:
@@ -104,7 +117,7 @@ def build_positions(session: Session, specs: list[PositionIn]) -> list[BasketPos
         for s, w in zip(specs, weights)
     ]
     for p in positions:
-        p.units = _target_units(p, BASE_NAV)
+        p.units = _target_units(p, BASE_NAV, p.target_weight)
     return positions
 
 
@@ -120,13 +133,19 @@ def value_basket(basket: Basket) -> Valuation:
 
 
 def plan_rebalance(basket: Basket) -> tuple[Valuation, list[Trade]]:
+    """Closed positions go to 0 units; open ones to their share of NAV at the rescaled targets."""
     valuation = value_basket(basket)
+    weights = rebalanced_weights(basket)
     trades = [
         Trade(
             position=pv.position,
             price=pv.price,
             current_units=pv.position.units,
-            target_units=_target_units(pv.position, valuation.nav),
+            target_units=(
+                _target_units(pv.position, valuation.nav, weights[pv.position.id])
+                if pv.position.id in weights
+                else 0.0
+            ),
         )
         for pv in valuation.positions
     ]
@@ -134,8 +153,15 @@ def plan_rebalance(basket: Basket) -> tuple[Valuation, list[Trade]]:
 
 
 def apply_rebalance(basket: Basket) -> list[Trade]:
+    """Reset units to target, dropping closed positions and rescaling the rest's target weights."""
+    weights = rebalanced_weights(basket)
     _, trades = plan_rebalance(basket)
     for trade in trades:
         trade.position.units = trade.target_units
+    for p in list(basket.positions):
+        if p.id in weights:
+            p.target_weight = weights[p.id]
+        else:
+            basket.positions.remove(p)
     basket.rebalanced_at = utcnow()
     return trades

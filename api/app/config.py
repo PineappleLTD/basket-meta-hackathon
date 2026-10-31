@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     paper_starting_cash: float = 10_000
     # Paper fills pay Kalshi's taker fee: ceil to the cent of rate * contracts * price * (1 - price).
     paper_fee_rate: float = 0.07
+    # Paper orders fill against Kalshi's live book, fetched per trade and reused this long...
+    paper_quote_cache_seconds: float = 15
+    # ...and fall back to the last sync's top of book, if it's younger than this, when it can't be fetched.
+    paper_max_quote_age_minutes: float = 30
+    # Sync markets (settling resolved ones and running automations) this often in the
+    # background. 0 turns it off; POST /markets/sync and sync.py still work.
+    sync_interval_minutes: float = 15
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     # Meta Model API key (starts with LLM_). Read from META (unprefixed) or PMETF_META_API_KEY.
     meta_api_key: str | None = Field(default=None, validation_alias=AliasChoices("META", "PMETF_META_API_KEY"))
