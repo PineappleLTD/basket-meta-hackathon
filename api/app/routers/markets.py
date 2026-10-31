@@ -9,7 +9,7 @@ from app.db import SessionDep
 from app.models import Market, MarketPrice
 from app.routers.common import HistoryLimit, get_or_404, history
 from app.schemas import MarketOut, MarketPage, PricePoint, SyncCounts
-from app.services.sync import sync_markets
+from app.services.sync import refresh
 
 router = APIRouter(prefix="/markets", tags=["markets"])
 
@@ -49,14 +49,16 @@ def get_prices(market_id: int, session: SessionDep, since: datetime | None = Non
 
 @router.post("/sync", response_model=SyncCounts)
 def sync(request: Request, session: SessionDep, _user: CurrentUser):
-    """Pull markets from Kalshi, upsert them, and record prices and NAVs. Requires sign-in.
+    """Pull markets from Kalshi, upsert them, settle resolved ones, record prices and NAVs, and
+    place automated trades that are due. Requires sign-in.
 
-    A live sync pages through every open event, so it takes around half a minute.
+    A live sync pages through every open event, so it takes around half a minute. The API
+    also syncs on its own every PMETF_SYNC_INTERVAL_MINUTES.
     """
     state = request.app.state
     if not state.sync_lock.acquire(blocking=False):
         raise HTTPException(409, "A sync is already running")
     try:
-        return sync_markets(session, state.market_source, state.settings.backfill_days)
+        return refresh(session, state.market_source, state.brokers, state.settings.backfill_days)
     finally:
         state.sync_lock.release()

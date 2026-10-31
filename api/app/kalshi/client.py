@@ -6,12 +6,17 @@ from datetime import UTC, datetime
 
 import httpx
 
-from app.kalshi.base import MarketData, PriceHistory
+from app.kalshi.base import Level, MarketData, OrderBook, PriceHistory
 
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 _PAGE_SIZE = 200
 # The batch candlesticks endpoint rejects more tickers than this per request.
 _CANDLES_BATCH = 100
+# Tickers per orderbook or market lookup. These go in the query string, and 150 long
+# tickers overflow Kalshi's URL limit.
+_LOOKUP_BATCH = 50
+# Statuses of a market whose result is known.
+_RESOLVED = {"determined", "finalized", "settled"}
 _DAY_MINUTES = 1440
 _MAX_RETRIES = 5
 # Kalshi's basic tier allows 20 reads/s, but heavy requests (100-ticker candlestick batches)
@@ -31,6 +36,22 @@ def _yes_price(bid: float | None, ask: float | None, last: float | None) -> floa
     if bid is not None and ask is not None and 0 < bid <= ask < 1:
         return round((bid + ask) / 2, 4)
     return last
+
+
+def _levels(rows: list[list[str]] | None) -> tuple[Level, ...]:
+    """Kalshi lists a side's bids lowest first; return them best first, empty levels dropped."""
+    levels = ((float(p), float(q)) for p, q in rows or [])
+    return tuple(sorted(((p, q) for p, q in levels if q > 0), reverse=True))
+
+
+def _payout(market: dict) -> float | None:
+    """What a YES contract paid, or None while the market is unresolved."""
+    if market.get("status") not in _RESOLVED or not market.get("result"):
+        return None
+    value = _dollars(market.get("settlement_value_dollars"))
+    if value is not None:
+        return value
+    return {"yes": 1.0, "no": 0.0}.get(market["result"])
 
 
 def _fallback_title(event: dict, market: dict) -> str:
@@ -116,6 +137,26 @@ class KalshiClient:
                 history[entry["market_ticker"]] = points
         return history
 
+    def fetch_orderbooks(self, tickers: list[str]) -> dict[str, OrderBook]:
+        books = {}
+        for i in range(0, len(tickers), _LOOKUP_BATCH):
+            params = [("tickers", t) for t in tickers[i : i + _LOOKUP_BATCH]]
+            for entry in self._get("/markets/orderbooks", params)["orderbooks"]:
+                book = entry.get("orderbook_fp") or {}
+                books[entry["ticker"]] = OrderBook(_levels(book.get("yes_dollars")), _levels(book.get("no_dollars")))
+        return books
+
+    def fetch_results(self, tickers: list[str]) -> dict[str, float]:
+        results = {}
+        for i in range(0, len(tickers), _LOOKUP_BATCH):
+            batch = tickers[i : i + _LOOKUP_BATCH]
+            data = self._get("/markets", {"tickers": ",".join(batch), "limit": len(batch)})
+            for m in data["markets"]:
+                payout = _payout(m)
+                if payout is not None:
+                    results[m["ticker"]] = payout
+        return results
+
     def _paginate(self, path: str, key: str, params: dict) -> Iterator[dict]:
         cursor = None
         while True:
@@ -125,7 +166,7 @@ class KalshiClient:
             if not cursor or not data[key]:
                 return
 
-    def _get(self, path: str, params: dict) -> dict:
+    def _get(self, path: str, params: dict | list[tuple[str, str]]) -> dict:
         for attempt in range(_MAX_RETRIES):
             self._throttle()
             resp = self._http.get(path, params=params)

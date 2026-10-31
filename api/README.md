@@ -17,6 +17,7 @@ The SQLite file lives at `api/data/app.db` and is created on startup; tables com
 Market data comes from Kalshi's public API, which needs no account or key. On first start
 with an empty database the API syncs in the background (about a minute: ~17k markets plus 90
 days of daily history for each); `/markets` is empty until it finishes. Later syncs take ~10s.
+To sync without logging in, run `.venv/bin/python sync.py` from `api/`; it uses the same settings.
 
 ## Config
 
@@ -32,6 +33,9 @@ Env vars (or `.env` at the repo root / in `api/`), all prefixed `PMETF_`:
 | `PMETF_KALSHI_REQUESTS_PER_SECOND` | `4` – cap on Kalshi API requests; 10 drew 429s on a first sync                |
 | `PMETF_PAPER_STARTING_CASH`        | `10000` – dollars a paper account opens and resets with                       |
 | `PMETF_PAPER_FEE_RATE`             | `0.07` – Kalshi taker fee multiplier for paper fills                          |
+| `PMETF_PAPER_QUOTE_CACHE_SECONDS`  | `15` – how long a fetched order book is reused (preview, then the order)      |
+| `PMETF_PAPER_MAX_QUOTE_AGE_MINUTES`| `30` – oldest stored quote paper fills fall back to when Kalshi is unreachable |
+| `PMETF_SYNC_INTERVAL_MINUTES`      | `15` – background sync (settlement, automations); `0` turns it off            |
 | `PMETF_CORS_ORIGINS`               | `["http://localhost:3000", "http://localhost:5173"]`                          |
 | `META` (or `PMETF_META_API_KEY`)   | unset – Meta Model API key (`LLM_…`); `/theses/select` returns 503 without it |
 | `PMETF_LLAMA_MODEL`                | `muse-spark-1.3`                                                              |
@@ -56,25 +60,53 @@ Each user gets a paper account (opened on first use with `$10,000`) and can put 
 their baskets. Accounts are per mode (`/accounts/paper`, `/accounts/live`); a mode works when a
 broker is registered for it in `app.state.brokers`, and only paper has one so far (live → 501).
 
-- **Buy** `$amount`: split by target weight; each leg buys the most whole contracts whose cost
-  plus fee fits its share, so the total never exceeds the amount. Leftover cents stay as cash.
-- **Sell** `fraction` (default 1 = everything): of every holding, rounded down. Legs with no bid
-  (e.g. a closed market) stay held and are listed in `skipped`.
-- **Rebalance**: trades the holdings back to target weights at their market value, sells first.
-  Legs within 0.5 points of target are left alone, so repeat rebalances don't churn fees.
-  This is separate from `POST /baskets/{id}/rebalance`, which resets the model index.
+- **Buy** `$amount`: split by the index's *current* weights (what its NAV is made of now), so the
+  holding moves with NAV. Each leg buys the most whole contracts its share affords, walking the
+  book, fees included; leftover cash then buys one more contract for the legs furthest under
+  their share. The total never exceeds the amount.
+- **Sell** `fraction` (default 1 = everything): of every holding, rounded down, into the bids.
+- **Rebalance**: resets the basket's index to its targets (closed markets leave it and their
+  weight goes to the rest) and trades the holdings to match, sells first, funded by the sells
+  and then cash. Open holdings the basket no longer targets are sold. Legs within 0.5 points of
+  target are left alone, and holdings in closed markets wait to settle.
+- **Settlement**: each sync looks up results for closed markets a basket or holding uses. A
+  resolved market takes its payout as price (so the index holds it like cash and NAV doesn't
+  jump), and holdings in it are paid out to cash with no fee, as a `settle` basket order.
 
-Paper fills are taker fills at the stored top of book: YES buys at `yes_ask`, YES sells at
-`yes_bid`, NO buys at `1 - yes_bid`, NO sells at `1 - yes_ask`. Each fill pays Kalshi's fee,
-`ceil_to_cent(0.07 × contracts × price × (1 − price))`. Limits: quotes are only as fresh as the
-last sync, book depth is unknown so size never moves the price, and closed markets don't settle
-yet (their holdings stay marked at the last price).
+Paper fills walk Kalshi's live order book (`/markets/orderbooks`, fetched per trade and cached
+for `PMETF_PAPER_QUOTE_CACHE_SECONDS`): YES buys lift NO bids at `1 − p`, YES sells hit YES bids,
+and the reverse for NO. Each order's limit is the deepest level it was sized against, so if the
+book thinned since the preview it fills partly; fills use up the cached liquidity. If the book
+can't be fetched, the stored top of book stands in (unknown depth) while it's younger than
+`PMETF_PAPER_MAX_QUOTE_AGE_MINUTES`. Each fill pays Kalshi's fee,
+`ceil_to_cent(0.07 × Σ contracts × price × (1 − price))`. Resting maker orders aren't simulated:
+paper can't know queue position.
 
-Everything is planned before anything is sent: a buy fails whole (409) if any leg has no quote,
-or the amount exceeds cash or is too small to buy a contract. Pass `dry_run: true` to get the
-planned orders, fees and cash impact without placing them. Holdings are marked at the market
-price (mid), so a fresh buy shows a small loss from the spread and fees. A basket with holdings
-can't be deleted (409); order history outlives it.
+Everything is planned before anything is sent. Legs that can't trade (closed, no bids or asks,
+stale quote, a thin book) are listed in `skipped` and the rest go ahead; a buy's skipped share
+stays as cash. 409 when nothing at all can trade, cash is short, or the amount buys nothing.
+Pass `dry_run: true` to get the planned orders with average, best and limit price, price impact,
+fees and cash impact without placing them.
+
+Money that changes hands (cash, cost basis, fees, realized P&L) is whole cents: buys round up,
+sells round down. Accounts carry a version number, so two trades planned against the same
+balance can't both commit; the loser gets 409 and nothing is traded.
+
+Holdings are marked at the market price (mid, else last trade, or the payout once resolved), so
+a fresh buy shows a loss from the spread and fees. `liquidation_value` is what selling now at the
+best bids would bring after fees. Each basket holding is unitized: the first buy issues shares at
+the NAV, and later money in or out (buys, sells, payouts) moves shares at the holding's own
+value per share. `share_value` is directly comparable to the NAV, and `holding_return` vs
+`index_return` shows what trading costs and rounding took. A basket with holdings can't be
+deleted (409); order history outlives it.
+
+**Automations** run after every sync (background, `POST /markets/sync`, or `sync.py`), each
+committed on its own, with the outcome in the stake's `note`:
+
+- auto-rebalance once any holding drifts more than `auto_rebalance_drift` from target;
+- recurring buys of `recurring_amount` every `recurring_days` (missed runs aren't made up);
+- conditional orders that fire once the basket NAV is `at_or_below` / `at_or_above` a level:
+  limit buys, stop-losses and take-profits. They fill at market; one that can't is `failed`.
 
 ## Layout
 
@@ -90,7 +122,9 @@ can't be deleted (409); order history outlives it.
   markets the source stopped returning as closed, backfills history for new markets (1000
   tickers at a time, at most one price per market per timestamp), and at
   one shared timestamp writes a `market_prices` row per market, a `basket_navs` row per
-  basket and an `account_values` row per trading account.
+  basket and an `account_values` row per trading account. It also looks up results for closed
+  markets in use and pays out holdings in resolved ones. `refresh` runs a sync and then the
+  automations; the API runs it every `PMETF_SYNC_INTERVAL_MINUTES`.
 - `app/services/baskets.py` – basket math: units are sized so NAV starts at 100; drift is
   current weight minus target; rebalancing resets units to targets at the current NAV.
 - `app/llm.py` – `MetaLlama`: chat completions against the Meta Model API's OpenAI-compatible
@@ -109,10 +143,14 @@ can't be deleted (409); order history outlives it.
   toward 0 when history is short; markets with under 10 days of returns get a volatility
   estimated from their price. Positions whose returns correlate ≥ 0.85 with a more relevant
   pick are dropped as duplicates, and weights are capped at `max_weight` (default 0.25).
-- `app/brokers.py` – the `Broker` protocol (`quote`, `fee`, `execute`) and `PaperBroker`, which
-  fills in full at the stored top of book. A live Kalshi broker implements the same protocol.
+- `app/brokers.py` – the `Broker` protocol (`books`, `fee_cents`, `execute`), order `Book`s that
+  walk levels, and `PaperBroker`, which fills against Kalshi's live book. A live Kalshi broker
+  implements the same protocol.
 - `app/services/trading.py` – sizing and planning buys, sells and rebalances against broker
-  quotes, then booking fills to cash and holdings (average-cost basis, realized P&L on sells).
+  books, booking fills to cash and holdings (average-cost basis, realized P&L), shares per
+  stake, and paying out resolved markets.
+- `app/services/automation.py` – conditional orders, recurring buys and auto-rebalancing, run
+  after each sync.
 - `app/auth.py` – password hashing, sessions, and the `CurrentUser` dependency routes use to
   require sign-in.
 - `app/routers/` – HTTP endpoints.
@@ -131,7 +169,7 @@ can't be deleted (409); order history outlives it.
 | GET          | `/markets`                                | `q`, `is_open`, `limit`, `offset`; sorted by volume                                                                                                                                                                                                                                                                                                     |
 | GET          | `/markets/{id}`                           |                                                                                                                                                                                                                                                                                                                                                         |
 | GET          | `/markets/{id}/prices`                    | YES price history, oldest first; `since`, `limit`                                                                                                                                                                                                                                                                                                       |
-| POST         | `/markets/sync`                           | 🔒 pull from Kalshi; records prices and NAVs; 409 if a sync is running                                                                                                                                                                                                                                                                                  |
+| POST         | `/markets/sync`                           | 🔒 pull from Kalshi; records prices and NAVs, settles resolved markets, runs automations; 409 if a sync is running                                                                                                                                                                                                                                                                                  |
 | GET / POST   | `/baskets`                                | 🔒 your baskets; create: `{name?, description?, positions: [{market_id, side: yes\|no, weight?}]}`; omit all weights for equal weight; omit `name` to save as "New basket"                                                                                                                                                                                                                    |
 | GET / DELETE | `/baskets/{id}`                           | 🔒 includes NAV, per-position value, weight, drift                                                                                                                                                                                                                                                                                                      |
 | GET          | `/baskets/{id}/nav`                       | 🔒 NAV history (creation + every sync), oldest first; `since`, `limit`                                                                                                                                                                                                                                                                                  |
@@ -145,4 +183,9 @@ can't be deleted (409); order history outlives it.
 | GET          | `/accounts/{mode}/orders`                 | 🔒 basket orders with their per-market orders and fills, newest first; `basket_id`, `limit`                                                                                                                                                                                                                                                             |
 | POST         | `/accounts/{mode}/baskets/{id}/buy`       | 🔒 `{amount, dry_run?}`                                                                                                                                                                                                                                                                                                                                 |
 | POST         | `/accounts/{mode}/baskets/{id}/sell`      | 🔒 `{fraction?=1, dry_run?}`                                                                                                                                                                                                                                                                                                                            |
-| POST         | `/accounts/{mode}/baskets/{id}/rebalance` | 🔒 `{dry_run?}`; 409 if already within tolerance                                                                                                                                                                                                                                                                                                        |
+| POST         | `/accounts/{mode}/baskets/{id}/rebalance` | 🔒 `{dry_run?}`; also resets the index to its targets; 409 if already within tolerance                                                                                                                                                                                                                                                                  |
+| GET          | `/accounts/{mode}/baskets/{id}/history`   | 🔒 the holding's value and value per share after every trade and sync, with the NAV at each point                                                                                                                                                                                                                                                      |
+| GET / PUT    | `/accounts/{mode}/baskets/{id}/automation`| 🔒 `{auto_rebalance_drift?, recurring_amount?, recurring_days?, recurring_start?}`; omitted fields turn off                                                                                                                                                                                                                                              |
+| GET          | `/accounts/{mode}/conditional-orders`     | 🔒 newest first; `basket_id`, `status`                                                                                                                                                                                                                                                                                                                   |
+| POST         | `/accounts/{mode}/baskets/{id}/conditional-orders` | 🔒 `{action, amount, condition: at_or_below\|at_or_above, nav}`; amount is dollars for a buy, a 0–1 share for a sell; 409 if the NAV is already there                                                                                                                                                                                         |
+| DELETE       | `/accounts/{mode}/conditional-orders/{id}`| 🔒 cancel; 409 if it already fired                                                                                                                                                                                                                                                                                                                      |

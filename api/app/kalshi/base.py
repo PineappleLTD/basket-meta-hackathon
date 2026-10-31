@@ -27,6 +27,20 @@ class MarketData:
 # Ticker -> [(timestamp, yes_price)], oldest first.
 PriceHistory = dict[str, list[tuple[datetime, float]]]
 
+# (price, contracts) resting at that price. Kalshi's contract counts can be fractional.
+Level = tuple[float, float]
+
+
+@dataclass(frozen=True)
+class OrderBook:
+    """A market's resting bids, best (highest) first.
+
+    Kalshi's book has only bids: a NO bid at p is a YES ask at 1 - p, and the reverse.
+    """
+
+    yes_bids: tuple[Level, ...]
+    no_bids: tuple[Level, ...]
+
 
 class MarketSource(Protocol):
     """Where markets come from: the live Kalshi API, or a fake in tests."""
@@ -34,3 +48,11 @@ class MarketSource(Protocol):
     def fetch_markets(self) -> list[MarketData]: ...
 
     def fetch_history(self, tickers: list[str], days: int) -> PriceHistory: ...
+
+    def fetch_orderbooks(self, tickers: list[str]) -> dict[str, OrderBook]:
+        """Current books. A ticker the source doesn't know is left out."""
+        ...
+
+    def fetch_results(self, tickers: list[str]) -> dict[str, float]:
+        """What a YES contract paid, for the tickers whose markets have resolved. Others are left out."""
+        ...
