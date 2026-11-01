@@ -3,6 +3,10 @@ import { AuthNav } from "@/components/AuthNav";
 import { DbStatus } from "@/components/DbStatus";
 import { MarketGraph } from "@/components/MarketGraph";
 import { Logo } from "@/components/Logo";
+import { FAQS } from "@/lib/faq";
+
+// The questions worth answering before someone clicks through to /faq.
+const TOP_QUESTIONS = FAQS.filter((f) => ["02", "04", "07", "09"].includes(f.number));
 
 const MARKETS: [
   exchange: string,
@@ -146,6 +150,35 @@ export default function Home() {
             build a basket <span aria-hidden="true">→</span>
           </Link>
         </div>
+      </section>
+
+      <section className="faq faq-teaser">
+        <div>
+          <div className="eyebrow">FAQ</div>
+          <h2 className="faq-title">
+            Questions,
+            <br />
+            answered.
+          </h2>
+          <p className="faq-sub">How baskets are built, what moves them, and what can go wrong.</p>
+          <Link href="/faq" className="cta faq-all">
+            See all questions <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+
+        <ul className="faq-list">
+          {TOP_QUESTIONS.map((f, i) => (
+            <li key={f.number}>
+              <Link href={`/faq#q-${f.number}`} className="faq-q faq-link">
+                <span className="faq-n mono">{String(i + 1).padStart(2, "0")}</span>
+                <span>{f.question}</span>
+                <span className="faq-arrow" aria-hidden="true">
+                  →
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </section>
     </main>
   );
