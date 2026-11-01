@@ -77,7 +77,11 @@ Return JSON:
 - sub_themes: 2-5 distinct sub-themes.
 - keywords: 15-40 short search terms (1-3 words each) likely to appear verbatim in market \
 titles: entity names (people, companies, agencies, countries, tickers), indicators \
-("CPI", "unemployment", "rate cut"), events, and common synonyms. Lowercase."""
+("CPI", "unemployment", "rate cut"), events, and common synonyms. Lowercase.
+
+Sports market titles avoid league and team names: the NBA is "pro basketball", the NFL \
+"pro football", MLB "pro baseball" (so "pro basketball finals", not "nba finals"), and teams \
+go by city ("philadelphia", not "76ers"). Use those forms for sports theses."""
 
 _EXPAND_SCHEMA = {
     "type": "object",

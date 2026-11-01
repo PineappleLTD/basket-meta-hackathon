@@ -40,6 +40,33 @@ class BasketOrderKind(StrEnum):
     BUY = "buy"
     SELL = "sell"
     REBALANCE = "rebalance"
+    # A resolved market paid out the holding.
+    SETTLE = "settle"
+
+
+class OrderOrigin(StrEnum):
+    """What placed a basket order: the user, one of their automations, or a market resolving."""
+
+    MANUAL = "manual"
+    RECURRING = "recurring"
+    AUTO_REBALANCE = "auto_rebalance"
+    CONDITIONAL = "conditional"
+    SETTLEMENT = "settlement"
+
+
+class TriggerCondition(StrEnum):
+    """When a conditional order fires, against the basket's NAV."""
+
+    AT_OR_BELOW = "at_or_below"
+    AT_OR_ABOVE = "at_or_above"
+
+
+class ConditionalStatus(StrEnum):
+    OPEN = "open"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+    # Fired, but the order couldn't be placed (e.g. not enough cash).
+    FAILED = "failed"
 
 
 class Market(Base):
@@ -62,6 +89,16 @@ class Market(Base):
     closes_at: Mapped[datetime | None]
     is_open: Mapped[bool] = mapped_column(default=True)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+    # When yes_bid/yes_ask were last read from the source.
+    quoted_at: Mapped[datetime | None]
+    # What a YES contract paid once the market resolved (1 or 0; scalar markets in between).
+    # yes_price is set to it too, so marks and NAVs use the payout.
+    settlement_price: Mapped[float | None]
+    settled_at: Mapped[datetime | None]
+
+    @property
+    def is_settled(self) -> bool:
+        return self.settlement_price is not None
 
     def price_for(self, side: Side) -> float:
         return self.yes_price if side == Side.YES else 1.0 - self.yes_price
@@ -151,7 +188,11 @@ class BasketNav(Base):
 
 
 class Account(Base):
-    """A user's trading account. Each user has at most one per mode."""
+    """A user's trading account. Each user has at most one per mode.
+
+    Money that changes hands is kept in whole cents. `version` is bumped on every write, so
+    two trades planned against the same balance can't both commit.
+    """
 
     __tablename__ = "accounts"
     __table_args__ = (UniqueConstraint("user_id", "mode"),)
@@ -159,15 +200,29 @@ class Account(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     mode: Mapped[AccountMode] = mapped_column(_str_enum(AccountMode))
-    # Dollars. Paper accounts start at Settings.paper_starting_cash.
-    cash: Mapped[float]
-    starting_cash: Mapped[float]
+    # Paper accounts start at Settings.paper_starting_cash.
+    cash_cents: Mapped[int]
+    starting_cash_cents: Mapped[int]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     reset_at: Mapped[datetime | None]
+    version: Mapped[int] = mapped_column(default=1)
 
     holdings: Mapped[list["Holding"]] = relationship(
         back_populates="account", cascade="all, delete-orphan", lazy="selectin"
     )
+    stakes: Mapped[list["Stake"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    __mapper_args__ = {"version_id_col": version}
+
+    @property
+    def cash(self) -> float:
+        return self.cash_cents / 100
+
+    @property
+    def starting_cash(self) -> float:
+        return self.starting_cash_cents / 100
 
 
 class Holding(Base):
@@ -184,11 +239,98 @@ class Holding(Base):
     side: Mapped[Side] = mapped_column(_str_enum(Side))
     contracts: Mapped[int]
     # Total paid for the contracts still held, fees included.
-    cost: Mapped[float]
+    cost_cents: Mapped[int]
 
     account: Mapped[Account] = relationship(back_populates="holdings")
     basket: Mapped[Basket] = relationship(lazy="joined")
     market: Mapped[Market] = relationship(lazy="joined")
+
+    @property
+    def cost(self) -> float:
+        return self.cost_cents / 100
+
+
+class Stake(Base):
+    """An account's investment in one basket: its shares, and the automations that trade it.
+
+    Shares make the holding's return comparable to the basket's NAV. The first buy issues
+    shares at the NAV; later money in or out (buys, sells, payouts) issues or redeems shares
+    at the holding's own value per share, so trading costs and rounding show up as the
+    difference between the two. Kept while automations are set, even with nothing held.
+    """
+
+    __tablename__ = "stakes"
+    __table_args__ = (UniqueConstraint("account_id", "basket_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="CASCADE"), index=True)
+    shares: Mapped[float] = mapped_column(default=0.0)
+    # Basket NAV when the current run of shares was first issued (the holding's starting share value).
+    opened_nav: Mapped[float | None]
+    opened_at: Mapped[datetime | None]
+    # Realized on sells and payouts since the account was opened or reset.
+    realized_pnl_cents: Mapped[int] = mapped_column(default=0)
+    # Rebalance on a sync when any holding drifts further than this from target. None = off.
+    auto_rebalance_drift: Mapped[float | None]
+    # Buy this much every `recurring_days`, starting at next_recurring_at. None = off.
+    recurring_amount_cents: Mapped[int | None]
+    recurring_days: Mapped[int | None]
+    next_recurring_at: Mapped[datetime | None]
+    # What the last automated action did or why it failed, for the UI.
+    automation_note: Mapped[str | None] = mapped_column(Text)
+
+    account: Mapped[Account] = relationship(back_populates="stakes")
+    basket: Mapped[Basket] = relationship(lazy="joined")
+
+    @property
+    def realized_pnl(self) -> float:
+        return self.realized_pnl_cents / 100
+
+
+class StakeValue(Base):
+    """A stake's value and value per share after each trade and on every sync."""
+
+    __tablename__ = "stake_values"
+    __table_args__ = (Index("ix_stake_values_stake_ts", "stake_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stake_id: Mapped[int] = mapped_column(ForeignKey("stakes.id", ondelete="CASCADE"))
+    ts: Mapped[datetime]
+    value: Mapped[float]
+    # None while nothing is held.
+    share_value: Mapped[float | None]
+    # The basket's NAV at ts, so the two can be compared without lining up timestamps.
+    nav: Mapped[float]
+
+
+class ConditionalOrder(Base):
+    """A basket buy or sell that waits until the basket's NAV crosses a level, checked on every sync.
+
+    Covers limit buys (buy at or below), stop-losses (sell at or below) and take-profits
+    (sell at or above). Fires once, as a market order.
+    """
+
+    __tablename__ = "conditional_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="CASCADE"), index=True)
+    action: Mapped[Action] = mapped_column(_str_enum(Action))
+    # Dollars for a buy, share of holdings for a sell.
+    amount: Mapped[float]
+    condition: Mapped[TriggerCondition] = mapped_column(_str_enum(TriggerCondition))
+    nav: Mapped[float]
+    status: Mapped[ConditionalStatus] = mapped_column(_str_enum(ConditionalStatus), default=ConditionalStatus.OPEN)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    triggered_at: Mapped[datetime | None]
+    basket_order_id: Mapped[int | None] = mapped_column(ForeignKey("basket_orders.id", ondelete="SET NULL"))
+    # Why a fired order failed.
+    note: Mapped[str | None] = mapped_column(Text)
+
+    account: Mapped[Account] = relationship()
+    basket: Mapped[Basket] = relationship(lazy="joined")
+    basket_order: Mapped["BasketOrder | None"] = relationship()
 
 
 class BasketOrder(Base):
@@ -202,7 +344,8 @@ class BasketOrder(Base):
     basket_id: Mapped[int | None] = mapped_column(ForeignKey("baskets.id", ondelete="SET NULL"), index=True)
     basket_name: Mapped[str] = mapped_column(String(200))
     kind: Mapped[BasketOrderKind] = mapped_column(_str_enum(BasketOrderKind))
-    # Dollars for a buy, share of holdings for a sell, None for a rebalance.
+    origin: Mapped[OrderOrigin] = mapped_column(_str_enum(OrderOrigin), default=OrderOrigin.MANUAL)
+    # Dollars for a buy, share of holdings for a sell, None for a rebalance or payout.
     amount: Mapped[float | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
@@ -222,18 +365,33 @@ class Order(Base):
     side: Mapped[Side] = mapped_column(_str_enum(Side))
     action: Mapped[Action] = mapped_column(_str_enum(Action))
     count: Mapped[int]
-    # Quoted price the order was sized against; the limit for a live order.
+    # Worst price the order may fill at: the deepest book level it was sized against. A
+    # payout's is the settlement price.
     limit_price: Mapped[float]
     filled_count: Mapped[int]
     # Average fill price per contract; None when nothing filled.
     fill_price: Mapped[float | None]
-    fee: Mapped[float]
-    # Sells only: proceeds less fee less the cost basis of the contracts sold.
-    realized_pnl: Mapped[float | None]
+    # What changed hands before the fee: paid for a buy, received for a sell.
+    gross_cents: Mapped[int] = mapped_column(default=0)
+    fee_cents: Mapped[int] = mapped_column(default=0)
+    # Sells and payouts only: proceeds less fee less the cost basis of the contracts sold.
+    realized_pnl_cents: Mapped[int | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     basket_order: Mapped[BasketOrder] = relationship(back_populates="orders")
     market: Mapped[Market] = relationship(lazy="joined")
+
+    @property
+    def gross(self) -> float:
+        return self.gross_cents / 100
+
+    @property
+    def fee(self) -> float:
+        return self.fee_cents / 100
+
+    @property
+    def realized_pnl(self) -> float | None:
+        return None if self.realized_pnl_cents is None else self.realized_pnl_cents / 100
 
 
 class AccountValue(Base):
