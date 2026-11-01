@@ -6,7 +6,7 @@ import cvxpy as cp
 def logit(p):
     p = np.clip(p, 0.01, 0.99)
     return np.log(p / (1 - p))
-
+ 
  
 def build_covariance(basket, price_hist, shrink=0.2):
     """Covariance of $1 returns across contracts.
@@ -139,7 +139,6 @@ def compare(before, after, labels=("before", "after")):
     m["change"] = (m[f"weight_{labels[1]}"] - m[f"weight_{labels[0]}"]).round(4)
     print(m.to_string(index=False))
  
- 
 if __name__ == "__main__":
     pd.set_option("display.width", 120)
     basket, hist = mock_data()
@@ -168,4 +167,3 @@ if __name__ == "__main__":
     assert w1["weight"].sum() <= 1 + 1e-3 and (w1["weight"] <= 0.25 + 1e-4).all()
     assert w1i[["eu_ai_act", "eu_ai_delay"]].sum() <= 0.30 + 1e-4
     print("\nChecks passed: invested <= 100%, no contract above 25%, EU pair <= 30%.")
-    
