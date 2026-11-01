@@ -144,41 +144,41 @@ export default function Home() {
           </div>
         </figure>
 
+        <div className="faq faq-teaser">
+          <div>
+            <div className="eyebrow">FAQ</div>
+            <h2 className="faq-title">
+              Questions,
+              <br />
+              answered.
+            </h2>
+            <p className="faq-sub">How baskets are built, what moves them, and what can go wrong.</p>
+            <Link href="/faq" className="cta faq-all">
+              See all questions <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+
+          <ul className="faq-list">
+            {TOP_QUESTIONS.map((f, i) => (
+              <li key={f.number}>
+                <Link href={`/faq#q-${f.number}`} className="faq-q faq-link">
+                  <span className="faq-n mono">{String(i + 1).padStart(2, "0")}</span>
+                  <span>{f.question}</span>
+                  <span className="faq-arrow" aria-hidden="true">
+                    →
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <div className="explain-cta">
           <h2>got a take?</h2>
           <Link href="/basket" className="cta">
             build a basket <span aria-hidden="true">→</span>
           </Link>
         </div>
-      </section>
-
-      <section className="faq faq-teaser">
-        <div>
-          <div className="eyebrow">FAQ</div>
-          <h2 className="faq-title">
-            Questions,
-            <br />
-            answered.
-          </h2>
-          <p className="faq-sub">How baskets are built, what moves them, and what can go wrong.</p>
-          <Link href="/faq" className="cta faq-all">
-            See all questions <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-
-        <ul className="faq-list">
-          {TOP_QUESTIONS.map((f, i) => (
-            <li key={f.number}>
-              <Link href={`/faq#q-${f.number}`} className="faq-q faq-link">
-                <span className="faq-n mono">{String(i + 1).padStart(2, "0")}</span>
-                <span>{f.question}</span>
-                <span className="faq-arrow" aria-hidden="true">
-                  →
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
       </section>
     </main>
   );
