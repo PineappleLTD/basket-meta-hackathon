@@ -145,6 +145,41 @@ def test_fetch_markets_drops_repeated_tickers():
     assert sorted(m.external_id for m in client.fetch_markets()) == ["DUP", "OTHER"]
 
 
+def test_fetch_orderbooks_batches_tickers_and_orders_bids_best_first(monkeypatch):
+    monkeypatch.setattr("app.kalshi.client._LOOKUP_BATCH", 2)
+    calls = []
+
+    def handler(request):
+        tickers = request.url.params.get_list("tickers")
+        calls.append(tickers)
+        book = {"yes_dollars": [["0.3000", "10.00"], ["0.3200", "5.50"]], "no_dollars": [["0.6500", "0.00"]]}
+        return httpx.Response(200, json={"orderbooks": [{"ticker": t, "orderbook_fp": book} for t in tickers]})
+
+    books = _client(handler).fetch_orderbooks(["A", "B", "C"])
+    assert calls == [["A", "B"], ["C"]]
+    # Kalshi lists bids lowest first; empty levels are dropped.
+    assert books["A"].yes_bids == ((0.32, 5.5), (0.30, 10.0))
+    assert books["A"].no_bids == ()
+
+
+def test_fetch_results_keeps_only_resolved_markets():
+    def handler(request):
+        assert request.url.params["tickers"] == "Y,N,OPEN,SCALAR"
+        return httpx.Response(
+            200,
+            json={
+                "markets": [
+                    {"ticker": "Y", "status": "finalized", "result": "yes", "settlement_value_dollars": "1.0000"},
+                    {"ticker": "N", "status": "determined", "result": "no"},
+                    {"ticker": "OPEN", "status": "active", "result": ""},
+                    {"ticker": "SCALAR", "status": "settled", "result": "scalar", "settlement_value_dollars": "0.3700"},
+                ]
+            },
+        )
+
+    assert _client(handler).fetch_results(["Y", "N", "OPEN", "SCALAR"]) == {"Y": 1.0, "N": 0.0, "SCALAR": 0.37}
+
+
 class _FakeSource:
     def __init__(self, markets, history=None):
         self.markets = markets
@@ -162,8 +197,10 @@ class _FakeSource:
 def test_sync_closes_markets_the_source_stops_returning(session):
     a, b = (MarketData(external_id=t, question=t, yes_price=0.5) for t in ("NEW-A", "NEW-B"))
     # The 11 seeded fake markets aren't returned, so they close.
-    assert sync_markets(session, _FakeSource([a, b]), backfill_days=0) == {"created": 2, "updated": 0, "closed": 11}
-    assert sync_markets(session, _FakeSource([a]), backfill_days=0) == {"created": 0, "updated": 1, "closed": 1}
+    counts = sync_markets(session, _FakeSource([a, b]), backfill_days=0)
+    assert counts == {"created": 2, "updated": 0, "closed": 11, "resolved": 0, "settled": 0}
+    counts = sync_markets(session, _FakeSource([a]), backfill_days=0)
+    assert counts == {"created": 0, "updated": 1, "closed": 1, "resolved": 0, "settled": 0}
 
 
 def test_sync_stores_a_repeated_ticker_once(session):

@@ -13,6 +13,9 @@ export interface Market {
   yes_price: number;
   volume: number;
   closes_at: string | null;
+  // Sent with saved baskets and holdings; a resolved market has its YES payout.
+  is_open?: boolean;
+  settlement_price?: number | null;
 }
 
 export interface PositionIn {

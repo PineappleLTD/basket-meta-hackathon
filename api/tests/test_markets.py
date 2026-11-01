@@ -23,5 +23,12 @@ def test_get_market_404(client):
 
 def test_sync_upserts_without_duplicating(client):
     report = client.post("/markets/sync").json()
-    assert report == {"created": 0, "updated": len(_FIXTURES), "closed": 0}
+    assert report == {
+        "created": 0,
+        "updated": len(_FIXTURES),
+        "closed": 0,
+        "resolved": 0,
+        "settled": 0,
+        "automated": 0,
+    }
     assert client.get("/markets").json()["total"] == len(_FIXTURES)

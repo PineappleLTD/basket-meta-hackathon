@@ -1,8 +1,16 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models import AccountMode, Action, BasketOrderKind, Side
+from app.models import (
+    AccountMode,
+    Action,
+    BasketOrderKind,
+    ConditionalStatus,
+    OrderOrigin,
+    Side,
+    TriggerCondition,
+)
 
 
 class Credentials(BaseModel):
@@ -49,6 +57,9 @@ class MarketOut(BaseModel):
     closes_at: datetime | None
     is_open: bool
     updated_at: datetime
+    # What a YES contract paid, once resolved.
+    settlement_price: float | None = None
+    settled_at: datetime | None = None
 
 
 class MarketPage(BaseModel):
@@ -74,6 +85,11 @@ class SyncCounts(BaseModel):
     created: int
     updated: int
     closed: int
+    # Closed markets whose result came in, and holdings paid out because of it.
+    resolved: int
+    settled: int
+    # Basket orders placed by automations.
+    automated: int
 
 
 class PositionIn(BaseModel):
@@ -205,10 +221,13 @@ class HoldingOut(BaseModel):
     # Cost per contract, fees included.
     avg_cost: float
     cost: float
+    # Mark: bid/ask mid, else last trade.
     price: float
     value: float
+    # Selling now at the best bid, after fees. A closed market counts at its mark until it pays out.
+    liquidation_value: float
     unrealized_pnl: float
-    # Share of the basket's holdings value, and the share the basket targets.
+    # Share of the basket's holdings value, and the share a rebalance would bring it to.
     weight: float
     target_weight: float
     drift: float
@@ -217,10 +236,23 @@ class HoldingOut(BaseModel):
 class BasketHoldingsOut(BaseModel):
     basket_id: int
     basket_name: str
+    # The basket's index value, to compare share_value with.
+    nav: float
     value: float
+    liquidation_value: float
     cost: float
     unrealized_pnl: float
+    # On sells and payouts in this basket since the account was opened or reset.
+    realized_pnl: float
     max_drift: float
+    # Shares are issued at the NAV on the first buy, then at share_value.
+    shares: float
+    share_value: float | None
+    opened_nav: float | None
+    opened_at: datetime | None
+    # Since opened_at: the holding's return (share_value / opened_nav - 1) and the index's.
+    holding_return: float | None
+    index_return: float | None
     holdings: list[HoldingOut]
 
 
@@ -231,8 +263,11 @@ class AccountOut(BaseModel):
     holdings_value: float
     # Cash plus holdings at market.
     equity: float
+    # Cash plus holdings sold now at the best bids.
+    liquidation_equity: float
     # Equity less starting cash.
     pnl: float
+    realized_pnl: float
     created_at: datetime
     reset_at: datetime | None
     baskets: list[BasketHoldingsOut]
@@ -243,6 +278,15 @@ class EquityPoint(BaseModel):
 
     ts: datetime
     equity: float
+
+
+class StakePoint(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ts: datetime
+    value: float
+    share_value: float | None
+    nav: float
 
 
 class OrderOut(BaseModel):
@@ -256,6 +300,8 @@ class OrderOut(BaseModel):
     limit_price: float
     filled_count: int
     fill_price: float | None
+    # Paid (buy) or received (sell) before the fee.
+    gross: float
     fee: float
     realized_pnl: float | None
     created_at: datetime
@@ -268,6 +314,7 @@ class BasketOrderOut(BaseModel):
     basket_id: int | None
     basket_name: str
     kind: BasketOrderKind
+    origin: OrderOrigin
     amount: float | None
     created_at: datetime
     orders: list[OrderOut]
@@ -278,7 +325,12 @@ class PlannedOrderOut(BaseModel):
     side: Side
     action: Action
     count: int
+    # Average price per contract, walking the book from best_price down to limit_price.
     price: float
+    best_price: float
+    limit_price: float
+    # What walking the book costs over filling everything at best_price.
+    price_impact: float
     fee: float
     # Negative for a buy.
     cash_delta: float
@@ -294,6 +346,8 @@ class TradePreview(BaseModel):
     kind: BasketOrderKind
     orders: list[PlannedOrderOut]
     skipped: list[SkippedLegOut]
+    fees: float
+    price_impact: float
     cash_delta: float
     cash_after: float
 
@@ -302,3 +356,59 @@ class TradeResult(BaseModel):
     basket_order: BasketOrderOut
     skipped: list[SkippedLegOut]
     account: AccountOut
+
+
+class AutomationIn(BaseModel):
+    # Rebalance on a sync once any holding drifts this far from target. None turns it off.
+    auto_rebalance_drift: float | None = Field(default=None, gt=0, le=1)
+    # Buy `recurring_amount` dollars every `recurring_days`. Both or neither.
+    recurring_amount: float | None = Field(default=None, gt=0)
+    recurring_days: int | None = Field(default=None, ge=1, le=365)
+    # First recurring buy. Defaults to the next sync.
+    recurring_start: datetime | None = None
+
+    @model_validator(mode="after")
+    def _recurring_pair(self):
+        if (self.recurring_amount is None) != (self.recurring_days is None):
+            raise ValueError("Give both recurring_amount and recurring_days, or neither")
+        return self
+
+
+class AutomationOut(BaseModel):
+    auto_rebalance_drift: float | None
+    recurring_amount: float | None
+    recurring_days: int | None
+    next_recurring_at: datetime | None
+    # What the last automated action did, or why it didn't.
+    note: str | None
+
+
+class ConditionalOrderIn(BaseModel):
+    action: Action
+    # Dollars for a buy; share of holdings (0..1] for a sell.
+    amount: float = Field(gt=0)
+    condition: TriggerCondition
+    # Fires when the basket's NAV is at or past this.
+    nav: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _sell_fraction(self):
+        if self.action == Action.SELL and self.amount > 1:
+            raise ValueError("A sell's amount is the share of holdings to sell, at most 1")
+        return self
+
+
+class ConditionalOrderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    basket_id: int
+    action: Action
+    amount: float
+    condition: TriggerCondition
+    nav: float
+    status: ConditionalStatus
+    created_at: datetime
+    triggered_at: datetime | None
+    basket_order_id: int | None
+    note: str | None

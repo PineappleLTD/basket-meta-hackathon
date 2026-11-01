@@ -28,6 +28,14 @@ export const listBaskets = () => apiJson<Basket[]>("/baskets");
 
 export const getBasket = (id: number | string) => apiJson<Basket>(`/baskets/${id}`);
 
+export interface NavPoint {
+  ts: string;
+  nav: number;
+}
+
+// Oldest first. A point is added at creation and on each price sync.
+export const getNavHistory = (id: number | string) => apiJson<NavPoint[]>(`/baskets/${id}/nav`);
+
 // A null name saves as "New basket"; titleBasket then names it.
 export const createBasket = (name: string | null, description: string, positions: PositionIn[]) =>
   apiJson<Basket>("/baskets", {
