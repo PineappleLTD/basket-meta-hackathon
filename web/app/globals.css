@@ -481,7 +481,7 @@ details[open] > .hist-row .hist-what { color: var(--accent); }
 .faq-page { max-width: 1057px; margin: 0 auto; padding: 28px 32px 32px; }
 :root:not([data-theme="dark"]) .faq { --muted: #6B6B6B; --line: #EAEAEA; }
 .faq { display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 65px; padding-top: 56px; }
-.faq h1 { margin: 16px 0 25px; font-size: 51px; line-height: 1.04; letter-spacing: -0.04em; font-weight: 500; }
+.faq-title { margin: 16px 0 25px; font-size: 51px; line-height: 1.04; letter-spacing: -0.04em; font-weight: 500; }
 
 .faq-search { display: flex; align-items: center; gap: 9px; height: 39px; padding: 0 13px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
 .faq-search:focus-within { border-color: var(--ink); }
@@ -501,7 +501,7 @@ details[open] > .hist-row .hist-what { color: var(--accent); }
 .faq-cats .mono { font-size: 10.5px; color: var(--muted); }
 
 .faq-list { border-top: 1px solid var(--ink); list-style: none; }
-.faq-list li { border-bottom: 1px solid var(--line); }
+.faq-list li { border-bottom: 1px solid var(--line); scroll-margin-top: 24px; }
 .faq-q {
   display: grid; grid-template-columns: 46px minmax(0, 1fr) 24px; align-items: start; width: 100%; padding: 23px 0;
   border: 0; background: none; color: var(--ink); text-align: left; font: 500 18px/24px var(--sans); letter-spacing: -0.015em; cursor: pointer;
@@ -520,12 +520,22 @@ details[open] > .hist-row .hist-what { color: var(--accent); }
 .faq-contact .cta { height: 40px; margin-top: 0; padding: 0 16px; font-size: 12.5px; }
 .faq-cats button:focus-visible, .faq-q:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* Landing page teaser: same columns and rows, each row linking to its answer on /faq */
+.faq-teaser { padding-top: 96px; }
+.faq-sub { font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+.faq-all { height: 41px; margin-top: 20px; padding: 0 16px; border: 1px solid var(--ink); background: none; color: var(--ink); font-size: 12.5px; }
+.faq-all:hover { border-color: var(--accent); color: var(--on-ink); }
+.faq-link { align-items: center; padding: 21px 0; }
+.faq-arrow { justify-self: end; font-size: 13px; font-weight: 400; color: var(--muted); transition: color 0.15s, transform 0.15s; }
+.faq-link:hover .faq-arrow { color: var(--ink); transform: translateX(3px); }
+
 @media (max-width: 860px) {
   .faq-page { padding: 20px 16px 24px; }
   .faq { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-top: 40px; }
   .faq-search input { font-size: 16px; }
   .faq-q { grid-template-columns: 34px minmax(0, 1fr) 24px; padding: 18px 0; font-size: 16px; }
   .faq-a { padding: 0 0 24px 34px; }
+  .faq-teaser { padding-top: 72px; }
 }
 
 /* Site footer */
