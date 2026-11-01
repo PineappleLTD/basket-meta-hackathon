@@ -118,11 +118,11 @@ class MarketPrice(Base):
 
 
 class User(Base):
-    """Stored in auth.db. SQLite can't enforce foreign keys across database files, so the
+    """Stored in shared.db. SQLite can't enforce foreign keys across database files, so the
     references to users.id from app.db tables are unchecked."""
 
     __tablename__ = "users"
-    __table_args__ = {"schema": "auth"}
+    __table_args__ = {"schema": "shared"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Stored lowercased, so sign-in is case-insensitive.
@@ -137,7 +137,7 @@ class AuthSession(Base):
     __tablename__ = "auth_sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("auth.users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("shared.users.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     expires_at: Mapped[datetime]
@@ -146,11 +146,13 @@ class AuthSession(Base):
 
 
 class Basket(Base):
+    """Stored in shared.db, so references to baskets.id from app.db tables are unchecked."""
+
     __tablename__ = "baskets"
-    __table_args__ = (UniqueConstraint("owner_id", "name"),)
+    __table_args__ = (UniqueConstraint("owner_id", "name"), {"schema": "shared"})
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("auth.users.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("shared.users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
@@ -162,12 +164,14 @@ class Basket(Base):
 
 
 class BasketPosition(Base):
+    """Stored in shared.db. Names its market by ticker: market ids are local to each app.db."""
+
     __tablename__ = "basket_positions"
-    __table_args__ = (UniqueConstraint("basket_id", "market_id", "side"),)
+    __table_args__ = (UniqueConstraint("basket_id", "market_ticker", "side"), {"schema": "shared"})
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="CASCADE"))
-    market_id: Mapped[int] = mapped_column(ForeignKey("markets.id", ondelete="RESTRICT"))
+    basket_id: Mapped[int] = mapped_column(ForeignKey("shared.baskets.id", ondelete="CASCADE"))
+    market_ticker: Mapped[str] = mapped_column(ForeignKey("markets.external_id", ondelete="RESTRICT"))
     side: Mapped[Side] = mapped_column(_str_enum(Side))
     target_weight: Mapped[float]
     # Contracts held per basket share. Set so the basket's NAV starts at BASE_NAV.
@@ -175,6 +179,10 @@ class BasketPosition(Base):
 
     basket: Mapped[Basket] = relationship(back_populates="positions")
     market: Mapped[Market] = relationship(lazy="joined")
+
+    @property
+    def market_id(self) -> int:
+        return self.market.id
 
 
 class BasketNav(Base):
@@ -184,7 +192,7 @@ class BasketNav(Base):
     __table_args__ = (Index("ix_basket_navs_basket_ts", "basket_id", "ts"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="CASCADE"))
+    basket_id: Mapped[int] = mapped_column(ForeignKey("shared.baskets.id", ondelete="CASCADE"))
     ts: Mapped[datetime]
     nav: Mapped[float]
 
@@ -202,7 +210,7 @@ class Account(Base):
     __table_args__ = (UniqueConstraint("user_id", "mode"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("auth.users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("shared.users.id", ondelete="CASCADE"), index=True)
     mode: Mapped[AccountMode] = mapped_column(_str_enum(AccountMode))
     # Paper accounts start at Settings.paper_starting_cash.
     cash_cents: Mapped[int]
@@ -238,7 +246,7 @@ class Holding(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     # RESTRICT: a basket can't be deleted while money is in it.
-    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="RESTRICT"), index=True)
+    basket_id: Mapped[int] = mapped_column(ForeignKey("shared.baskets.id", ondelete="RESTRICT"), index=True)
     market_id: Mapped[int] = mapped_column(ForeignKey("markets.id", ondelete="RESTRICT"))
     side: Mapped[Side] = mapped_column(_str_enum(Side))
     contracts: Mapped[int]
@@ -268,7 +276,7 @@ class Stake(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
-    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="CASCADE"), index=True)
+    basket_id: Mapped[int] = mapped_column(ForeignKey("shared.baskets.id", ondelete="CASCADE"), index=True)
     shares: Mapped[float] = mapped_column(default=0.0)
     # Basket NAV when the current run of shares was first issued (the holding's starting share value).
     opened_nav: Mapped[float | None]
@@ -319,7 +327,7 @@ class ConditionalOrder(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
-    basket_id: Mapped[int] = mapped_column(ForeignKey("baskets.id", ondelete="CASCADE"), index=True)
+    basket_id: Mapped[int] = mapped_column(ForeignKey("shared.baskets.id", ondelete="CASCADE"), index=True)
     action: Mapped[Action] = mapped_column(_str_enum(Action))
     # Dollars for a buy, share of holdings for a sell.
     amount: Mapped[float]
@@ -345,7 +353,7 @@ class BasketOrder(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     # Kept as history after the basket is deleted.
-    basket_id: Mapped[int | None] = mapped_column(ForeignKey("baskets.id", ondelete="SET NULL"), index=True)
+    basket_id: Mapped[int | None] = mapped_column(ForeignKey("shared.baskets.id", ondelete="SET NULL"), index=True)
     basket_name: Mapped[str] = mapped_column(String(200))
     kind: Mapped[BasketOrderKind] = mapped_column(_str_enum(BasketOrderKind))
     origin: Mapped[OrderOrigin] = mapped_column(_str_enum(OrderOrigin), default=OrderOrigin.MANUAL)

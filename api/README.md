@@ -13,8 +13,10 @@ cd api
 
 The SQLite file lives at `api/data/app.db` and is created on startup; tables come from
 `Base.metadata.create_all` (no migrations yet, so delete the file after schema changes).
-User accounts are kept apart in `api/data/auth.db` (attached as schema `auth`), which is
-small and committed to git; sessions stay in `app.db`, so signing in doesn't change it.
+Users, baskets and basket positions are kept apart in `api/data/shared.db` (attached as
+schema `shared`), which is small and committed to git. Positions name their market by Kalshi
+ticker, since market ids differ between databases. Sessions, NAV history and trading stay in
+`app.db`, so signing in and syncing don't change the shared file.
 
 Market data comes from Kalshi's public API, which needs no account or key. On first start
 with an empty database the API syncs in the background (about a minute: ~17k markets plus 90
@@ -28,7 +30,7 @@ Env vars (or `.env` at the repo root / in `api/`), all prefixed `PMETF_`:
 | Var                                | Default                                                                       |
 | ---------------------------------- | ----------------------------------------------------------------------------- |
 | `PMETF_DATABASE_URL`               | `sqlite:///api/data/app.db`                                                   |
-| `PMETF_AUTH_DATABASE`              | `api/data/auth.db` – SQLite file for user accounts                            |
+| `PMETF_SHARED_DATABASE`            | `api/data/shared.db` – SQLite file for users and baskets                      |
 | `PMETF_SEED_ON_STARTUP`            | `true`                                                                        |
 | `PMETF_BACKFILL_DAYS`              | `90` – daily history fetched for each newly seen market                       |
 | `PMETF_KALSHI_MIN_VOLUME`          | `1000` – contracts traded                                                     |

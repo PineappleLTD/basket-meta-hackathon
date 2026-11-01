@@ -312,7 +312,8 @@ def test_rebalance_sells_holdings_the_basket_no_longer_targets(client, session):
     basket = _basket(client, n=3)
     _buy(client, basket["id"], 3000)
     dropped = _ids(basket)[2]
-    position = session.query(BasketPosition).filter_by(basket_id=basket["id"], market_id=dropped).one()
+    ticker = session.get(Market, dropped).external_id
+    position = session.query(BasketPosition).filter_by(basket_id=basket["id"], market_ticker=ticker).one()
     session.delete(position)
     for p in session.query(BasketPosition).filter_by(basket_id=basket["id"]):
         p.target_weight = 0.5

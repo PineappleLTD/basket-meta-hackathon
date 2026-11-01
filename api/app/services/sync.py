@@ -102,7 +102,7 @@ def _resolve(session: Session, source: MarketSource, now: datetime) -> int:
     """Look up results for closed, unresolved markets that a basket or holding uses."""
     used = or_(
         Market.id.in_(select(Holding.market_id)),
-        Market.id.in_(select(BasketPosition.market_id)),
+        Market.external_id.in_(select(BasketPosition.market_ticker)),
     )
     pending = session.scalars(
         select(Market).where(Market.is_open.is_(False), Market.settlement_price.is_(None), used)
