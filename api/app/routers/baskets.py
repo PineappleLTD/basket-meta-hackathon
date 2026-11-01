@@ -2,11 +2,11 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 
 from app.auth import CurrentUser
 from app.db import SessionDep
-from app.models import Basket, BasketNav, Holding, utcnow
+from app.models import Basket, BasketNav, BasketOrder, ConditionalOrder, Holding, Stake, utcnow
 from app.routers.common import HistoryLimit, history, owned_basket
 from app.schemas import BasketIn, BasketOut, MarketOut, NavPoint, PositionOut, RebalancePlan, RebalanceResult, TradeOut
 from app.services import baskets as svc
@@ -122,6 +122,10 @@ def delete_basket(basket_id: int, session: SessionDep, user: CurrentUser):
     basket = owned_basket(session, user, basket_id)
     if session.scalar(select(Holding.id).where(Holding.basket_id == basket.id).limit(1)) is not None:
         raise HTTPException(409, "Sell this basket's holdings before deleting it")
+    # The basket is in shared.db, so app.db's foreign keys can't clean up after it.
+    for model in (BasketNav, Stake, ConditionalOrder):
+        session.execute(delete(model).where(model.basket_id == basket.id))
+    session.execute(update(BasketOrder).where(BasketOrder.basket_id == basket.id).values(basket_id=None))
     session.delete(basket)
     session.commit()
 

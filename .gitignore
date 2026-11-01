@@ -4,7 +4,7 @@
 node_modules/
 api/data/*
 *.db
-# User accounts are committed; app.db is too big.
-!api/data/auth.db
+# Users and baskets are committed; app.db is too big.
+!api/data/shared.db
 .DS_Store
 slicefund/
