@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.brokers import Broker, BookSource, PaperBroker
 from app.config import Settings
-from app.db import Base, SessionDep, make_engine
+from app.db import SessionDep, init_db, make_engine
 from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
 from app.models import AccountMode, Market
@@ -53,7 +53,7 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         engine = make_engine(settings.database_url, settings.shared_database)
-        Base.metadata.create_all(engine)
+        init_db(engine)
         app.state.settings = settings
         app.state.sessionmaker = sessionmaker(engine, expire_on_commit=False)
 

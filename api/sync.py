@@ -12,7 +12,7 @@ import time
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.db import Base, make_engine
+from app.db import init_db, make_engine
 from app.kalshi import KalshiClient
 from app.main import make_brokers
 from app.services.sync import refresh
@@ -24,7 +24,7 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     settings = Settings()
     engine = make_engine(settings.database_url, settings.shared_database)
-    Base.metadata.create_all(engine)
+    init_db(engine)
     source = KalshiClient(
         settings.kalshi_min_volume,
         settings.kalshi_exclude_categories,
