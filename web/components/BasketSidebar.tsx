@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BasketName } from "@/components/BasketName";
 import { useBaskets } from "@/components/BasketsContext";
+import { SidebarResizer } from "@/components/SidebarResizer";
 import { BASE_NAV } from "@/lib/baskets";
 import { signedPct } from "@/lib/format";
 
@@ -55,6 +56,8 @@ export function BasketSidebar() {
           })}
         </ul>
       )}
+
+      <SidebarResizer />
     </aside>
   );
 }

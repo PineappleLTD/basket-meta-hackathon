@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Footer } from "@/components/Footer";
 import { FooterGate } from "@/components/FooterGate";
+import { SIDEBAR_SCRIPT } from "@/lib/sidebar";
 import { THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -15,10 +16,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    // The theme script sets data-theme before React hydrates, so the attribute is expected to differ.
+    // The head scripts set data-theme and --sidebar-w before React hydrates, so the attributes are expected to differ.
     <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_SCRIPT }} />
       </head>
       <body>
         {children}
