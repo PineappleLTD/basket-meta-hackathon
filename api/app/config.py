@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     )
 
     database_url: str = f"sqlite:///{API_DIR / 'data' / 'app.db'}"
+    # User accounts live in their own SQLite file (attached as schema `auth`), small enough to
+    # commit. ":memory:" keeps them in memory.
+    auth_database: str = str(API_DIR / "data" / "auth.db")
     # Sync on startup when the markets table is empty.
     seed_on_startup: bool = True
     # Days of daily price history fetched for each market the first time it's synced.

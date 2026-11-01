@@ -2,7 +2,9 @@
 *__pycache__/
 .pytest_cache/
 node_modules/
-api/data/
+api/data/*
 *.db
+# User accounts are committed; app.db is too big.
+!api/data/auth.db
 .DS_Store
 slicefund/

@@ -23,7 +23,7 @@ def main() -> None:
     # httpx logs every Kalshi request at INFO, thousands of lines on a sync.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     settings = Settings()
-    engine = make_engine(settings.database_url)
+    engine = make_engine(settings.database_url, settings.auth_database)
     Base.metadata.create_all(engine)
     source = KalshiClient(
         settings.kalshi_min_volume,
