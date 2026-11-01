@@ -118,7 +118,11 @@ class MarketPrice(Base):
 
 
 class User(Base):
+    """Stored in auth.db. SQLite can't enforce foreign keys across database files, so the
+    references to users.id from app.db tables are unchecked."""
+
     __tablename__ = "users"
+    __table_args__ = {"schema": "auth"}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Stored lowercased, so sign-in is case-insensitive.
@@ -133,7 +137,7 @@ class AuthSession(Base):
     __tablename__ = "auth_sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("auth.users.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     expires_at: Mapped[datetime]
@@ -146,7 +150,7 @@ class Basket(Base):
     __table_args__ = (UniqueConstraint("owner_id", "name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("auth.users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
@@ -198,7 +202,7 @@ class Account(Base):
     __table_args__ = (UniqueConstraint("user_id", "mode"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("auth.users.id", ondelete="CASCADE"), index=True)
     mode: Mapped[AccountMode] = mapped_column(_str_enum(AccountMode))
     # Paper accounts start at Settings.paper_starting_cash.
     cash_cents: Mapped[int]

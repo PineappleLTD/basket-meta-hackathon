@@ -13,7 +13,8 @@ class Base(DeclarativeBase):
     pass
 
 
-def make_engine(database_url: str) -> Engine:
+def make_engine(database_url: str, auth_database: str = ":memory:") -> Engine:
+    """`auth_database` is a SQLite file attached to every connection as schema `auth`."""
     url = make_url(database_url)
     kwargs: dict = {}
     if url.get_backend_name() == "sqlite":
@@ -23,14 +24,17 @@ def make_engine(database_url: str) -> Engine:
             kwargs["poolclass"] = StaticPool
         else:
             Path(url.database).parent.mkdir(parents=True, exist_ok=True)
+        if auth_database != ":memory:":
+            Path(auth_database).parent.mkdir(parents=True, exist_ok=True)
 
     engine = create_engine(url, **kwargs)
 
     if url.get_backend_name() == "sqlite":
 
         @event.listens_for(engine, "connect")
-        def _enable_foreign_keys(dbapi_conn, _record):
+        def _on_connect(dbapi_conn, _record):
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
+            dbapi_conn.execute("ATTACH DATABASE ? AS auth", (auth_database,))
 
     return engine
 

@@ -52,7 +52,7 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        engine = make_engine(settings.database_url)
+        engine = make_engine(settings.database_url, settings.auth_database)
         Base.metadata.create_all(engine)
         app.state.settings = settings
         app.state.sessionmaker = sessionmaker(engine, expire_on_commit=False)

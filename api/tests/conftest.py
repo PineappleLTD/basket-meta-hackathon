@@ -10,6 +10,7 @@ from tests.fake_kalshi import FakeKalshi
 def app():
     settings = Settings(
         database_url="sqlite://",
+        auth_database=":memory:",
         backfill_days=30,
         # Every trade sees the fake's current book; tests that want caching build their own broker.
         paper_quote_cache_seconds=0,
