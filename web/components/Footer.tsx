@@ -16,7 +16,7 @@ const LINKS: LinkGroup[] = [
     ["How baskets work", "#"],
     ["Rebalancing", "#"],
     ["Venues", "#"],
-    ["FAQ", "#"],
+    ["FAQ", "/faq"],
   ]],
   ["Company", [
     ["About", "#"],
