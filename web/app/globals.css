@@ -481,7 +481,7 @@ details[open] > .hist-row .hist-what { color: var(--accent); }
 .faq-page { max-width: 1057px; margin: 0 auto; padding: 28px 32px 32px; }
 :root:not([data-theme="dark"]) .faq { --muted: #6B6B6B; --line: #EAEAEA; }
 .faq { display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 65px; padding-top: 56px; }
-.faq-title { margin: 16px 0 25px; font-size: 51px; line-height: 1.04; letter-spacing: -0.04em; font-weight: 500; }
+.faq-title, .explain .faq-title { margin: 16px 0 25px; font-size: 51px; line-height: 1.04; letter-spacing: -0.04em; font-weight: 500; }
 
 .faq-search { display: flex; align-items: center; gap: 9px; height: 39px; padding: 0 13px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); }
 .faq-search:focus-within { border-color: var(--ink); }
@@ -521,7 +521,7 @@ details[open] > .hist-row .hist-what { color: var(--accent); }
 .faq-cats button:focus-visible, .faq-q:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Landing page teaser: same columns and rows, each row linking to its answer on /faq */
-.faq-teaser { padding-top: 96px; }
+.faq-teaser { padding-top: 112px; }
 .faq-sub { font-size: 13.5px; line-height: 1.6; color: var(--muted); }
 .faq-all { height: 41px; margin-top: 20px; padding: 0 16px; border: 1px solid var(--ink); background: none; color: var(--ink); font-size: 12.5px; }
 .faq-all:hover { border-color: var(--accent); color: var(--on-ink); }
