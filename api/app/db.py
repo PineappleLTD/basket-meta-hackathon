@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, Request
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.pool import StaticPool
@@ -14,9 +14,16 @@ class Base(DeclarativeBase):
 
 
 def make_engine(database_url: str, shared_database: str = ":memory:") -> Engine:
-    """`shared_database` is a SQLite file attached to every connection as schema `shared`."""
+    """`shared_database` is a SQLite file attached to every connection as schema `shared`.
+    Postgres (e.g. Supabase) keeps everything in one database and ignores it."""
     url = make_url(database_url)
+    # Accept a plain postgresql:// URI, as Supabase shows it.
+    if url.drivername in ("postgres", "postgresql"):
+        url = url.set(drivername="postgresql+psycopg")
     kwargs: dict = {}
+    if url.get_backend_name() == "postgresql":
+        # The Supabase pooler drops idle connections.
+        kwargs["pool_pre_ping"] = True
     if url.get_backend_name() == "sqlite":
         kwargs["connect_args"] = {"check_same_thread": False}
         if url.database in (None, "", ":memory:"):
@@ -36,7 +43,31 @@ def make_engine(database_url: str, shared_database: str = ":memory:") -> Engine:
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
             dbapi_conn.execute("ATTACH DATABASE ? AS shared", (shared_database,))
 
+    if url.get_backend_name() == "postgresql":
+
+        @event.listens_for(engine, "connect")
+        def _utc(dbapi_conn, _record):
+            # Columns are timestamp without time zone, holding UTC. Postgres converts aware
+            # datetimes to the session's zone on the way in, so make that zone UTC.
+            dbapi_conn.execute("SET TIME ZONE 'UTC'")
+            dbapi_conn.commit()
+
     return engine
+
+
+def init_db(engine: Engine) -> None:
+    """Create any missing tables. On Postgres, also the `shared` schema, and row level
+    security on every table: Supabase's Data API exposes tables to its anon key, and RLS
+    with no policies shuts that out while the API (connecting as the tables' owner) still
+    has full access."""
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS shared"))
+    Base.metadata.create_all(engine)
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            for table in Base.metadata.sorted_tables:
+                conn.execute(text(f"ALTER TABLE {table.fullname} ENABLE ROW LEVEL SECURITY"))
 
 
 def get_session(request: Request) -> Iterator[Session]:

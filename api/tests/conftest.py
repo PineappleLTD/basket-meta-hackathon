@@ -1,15 +1,27 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.db import Base, make_engine
 from app.main import create_app
 from tests.fake_kalshi import FakeKalshi
 
 
+# Set to a throwaway Postgres database to run the tests against Postgres instead of SQLite.
+# Every table in it is dropped before each test.
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
+
+
 @pytest.fixture
 def app():
+    if TEST_DATABASE_URL != "sqlite://":
+        engine = make_engine(TEST_DATABASE_URL)
+        Base.metadata.drop_all(engine)
+        engine.dispose()
     settings = Settings(
-        database_url="sqlite://",
+        database_url=TEST_DATABASE_URL,
         shared_database=":memory:",
         backfill_days=30,
         # Every trade sees the fake's current book; tests that want caching build their own broker.

@@ -4,7 +4,5 @@
 node_modules/
 api/data/*
 *.db
-# Users and baskets are committed; app.db is too big.
-!api/data/shared.db
 .DS_Store
 slicefund/
