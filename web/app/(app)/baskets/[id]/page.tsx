@@ -2,16 +2,17 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAccount } from "@/components/AccountContext";
 import { AutomationPanel } from "@/components/AutomationPanel";
 import { BasketName } from "@/components/BasketName";
 import { useBaskets } from "@/components/BasketsContext";
+import { InfoTip } from "@/components/InfoTip";
 import { NavChart } from "@/components/NavChart";
 import { OrderHistory } from "@/components/OrderHistory";
 import { PositionTable } from "@/components/PositionTable";
 import { TradePanel } from "@/components/TradePanel";
 import { UnauthorizedError } from "@/lib/auth";
 import {
-  getAccount,
   getStakeHistory,
   listOrders,
   type Account,
@@ -50,7 +51,7 @@ export default function Page() {
   const [history, setHistory] = useState<NavPoint[]>([]);
   // The chart point under the pointer; the header shows it instead of the latest value.
   const [hover, setHover] = useState<NavPoint | null>(null);
-  const [account, setAccount] = useState<Account | null>(null);
+  const { account, setAccount, error: accountError } = useAccount();
   const [orders, setOrders] = useState<BasketOrder[]>([]);
   // The holding's value per share after each trade and sync, drawn over the NAV.
   const [mine, setMine] = useState<StakePoint[]>([]);
@@ -82,7 +83,6 @@ export default function Page() {
 
   useEffect(() => {
     loadBasket().catch(fail);
-    getAccount().then(setAccount).catch(fail);
     // The chart is extra: without history the page still works.
     getNavHistory(id)
       .then(setHistory)
@@ -93,7 +93,6 @@ export default function Page() {
   // Follow live prices. A failed poll keeps what's shown; the next one tries again.
   usePoll(() => {
     loadBasket().catch(() => {});
-    getAccount().then(setAccount).catch(() => {});
   });
 
   async function remove() {
@@ -219,8 +218,12 @@ export default function Page() {
                   {signedPct(change, 2)}
                 </span>
                 <span className="bd-when">
-                  {hover ? dateTime(hover.ts) : "since created"}
+                  {hover ? dateTime(hover.ts) : "since inception"}
                 </span>
+                <InfoTip>
+                  Net asset value (NAV) of the basket index. It starts at 100 when the basket is created and moves
+                  with the mid prices of its markets at their target weights. Trading costs are not included.
+                </InfoTip>
               </div>
               <NavChart
                 points={pricedAt ? [...history, { ts: pricedAt, nav: basket.nav }] : history}
@@ -280,7 +283,6 @@ export default function Page() {
           <aside className="bd-side">
             {account ? (
               <>
-                <AccountLine account={account} />
                 <TradePanel
                   basket={basket}
                   account={account}
@@ -298,7 +300,7 @@ export default function Page() {
                 />
               </>
             ) : (
-              !error && <p className="bd-status">Loading account…</p>
+              !error && <p className="bd-status">{accountError ?? "Loading account…"}</p>
             )}
           </aside>
         </div>
@@ -321,16 +323,3 @@ function Categories({ basket }: { basket: Basket }) {
   return <>By category: {rows.map(([c, w]) => `${c} ${pct(w)}`).join(" · ")}</>;
 }
 
-// The whole paper account at a glance, above the ticket.
-function AccountLine({ account }: { account: Account }) {
-  const change = account.pnl / account.starting_cash;
-  return (
-    <p className="bd-account">
-      <span>
-        Account {usd(account.equity)}{" "}
-        <span className={change < 0 ? "down" : "up"}>{signedPct(change, 2)}</span>
-      </span>
-      <span>Cash {usd(account.cash)}</span>
-    </p>
-  );
-}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BASE_NAV, type NavPoint } from "@/lib/baskets";
 import { date } from "@/lib/format";
+import { InfoTip } from "./InfoTip";
 
 const W = 600;
 const H = 160;
@@ -78,7 +79,13 @@ export function NavChart({
         <span>{date(points[0].ts)}</span>
         {own.length > 1 && (
           <span className="nav-legend">
-            <i className="nav-key" /> Basket <i className="nav-key nav-key-mine" /> Your holding, per share
+            <i className="nav-key" /> Index
+            <i className="nav-key nav-key-mine" /> Your position
+            <InfoTip>
+              Index is the basket&rsquo;s NAV at mid prices, rebased to 100 at inception. Your position is your
+              holding&rsquo;s value per share on the same scale. The gap between them is your execution cost:
+              spreads, fees and whole-contract rounding.
+            </InfoTip>
           </span>
         )}
         <span>{date(points[points.length - 1].ts)}</span>
