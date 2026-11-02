@@ -50,6 +50,7 @@ a { color: inherit; text-decoration: none; }
 .mark { display: inline-flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
 .mark svg { width: 20px; height: 19px; flex: none; }
 .brand { display: flex; align-items: center; gap: 14px; }
+.mode-badge { font: 500 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
 .db-status { display: inline-flex; align-items: center; gap: 6px; font: 400 10.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .db-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); transition: background 0.2s, box-shadow 0.2s; }
 .db-status.up i { background: #1FA34A; box-shadow: 0 0 0 3px rgba(31, 163, 74, 0.15); }
@@ -406,6 +407,7 @@ a { color: inherit; text-decoration: none; }
 .bd-section h2 { font-size: 18px; line-height: 1.3; font-weight: 600; letter-spacing: -0.015em; }
 .bd-count { margin-left: 4px; font-weight: 400; color: var(--muted); }
 .bd-foot { max-width: 680px; margin-top: 12px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.bd-foot .text-btn { font-size: inherit; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .bd-danger { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); }
 
 /* Trade ticket: the one boxed thing on the page */

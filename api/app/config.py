@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # Sync markets (settling resolved ones and running automations) this often in the
     # background. 0 turns it off; POST /markets/sync and sync.py still work.
     sync_interval_minutes: float = 15
+    # Between syncs, re-price just the markets that baskets and holdings use, and run
+    # automations, this often. About one Kalshi request per 50 markets. 0 turns it off.
+    live_refresh_seconds: float = 10
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     # Meta Model API key (starts with LLM_). Read from META (unprefixed) or PMETF_META_API_KEY.
     meta_api_key: str | None = Field(default=None, validation_alias=AliasChoices("META", "PMETF_META_API_KEY"))

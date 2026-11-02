@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -6,11 +7,14 @@ from sqlalchemy import delete, select, update
 
 from app.auth import CurrentUser
 from app.db import SessionDep
-from app.models import Basket, BasketNav, BasketOrder, ConditionalOrder, Holding, Stake, utcnow
+from app.models import Basket, BasketNav, BasketOrder, ConditionalOrder, Holding, Market, Stake, utcnow
 from app.routers.common import HistoryLimit, history, owned_basket
 from app.schemas import BasketIn, BasketOut, MarketOut, NavPoint, PositionOut, RebalancePlan, RebalanceResult, TradeOut
 from app.services import baskets as svc
 from app.services import naming
+from app.services.sync import quote_markets
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/baskets", tags=["baskets"])
 
@@ -67,12 +71,23 @@ def _taken_names(session, user, exclude_id: int | None = None) -> set[str]:
 
 
 @router.post("", response_model=BasketOut, status_code=201)
-def create_basket(body: BasketIn, session: SessionDep, user: CurrentUser):
-    """Without a `name`, saves as "New basket"; POST /baskets/{id}/title then names it."""
+def create_basket(body: BasketIn, request: Request, session: SessionDep, user: CurrentUser):
+    """Without a `name`, saves as "New basket"; POST /baskets/{id}/title then names it.
+
+    The markets are re-priced from Kalshi first, so the basket starts from live prices
+    rather than the last sync's.
+    """
     if body.name is not None and session.scalar(
         select(Basket.id).where(Basket.owner_id == user.id, Basket.name == body.name)
     ) is not None:
         raise HTTPException(409, "You already have a basket with that name")
+    markets = session.scalars(
+        select(Market).where(Market.id.in_({p.market_id for p in body.positions}), Market.is_open.is_(True))
+    ).all()
+    try:
+        quote_markets(session, request.app.state.market_source, list(markets))
+    except Exception:
+        log.warning("Couldn't re-price a new basket's markets; using the last sync's prices", exc_info=True)
     try:
         positions = svc.build_positions(session, body.positions)
     except svc.BasketError as e:

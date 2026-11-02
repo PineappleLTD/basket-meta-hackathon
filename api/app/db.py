@@ -66,8 +66,19 @@ def init_db(engine: Engine) -> None:
     Base.metadata.create_all(engine)
     if engine.dialect.name == "postgresql":
         with engine.begin() as conn:
+            # ALTER TABLE waits for an exclusive lock, behind any open transaction such as a
+            # running sync, so only run it on tables that don't have RLS yet.
+            secured = set(
+                conn.scalars(
+                    text(
+                        "SELECT n.nspname || '.' || c.relname FROM pg_class c"
+                        " JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relrowsecurity"
+                    )
+                )
+            )
             for table in Base.metadata.sorted_tables:
-                conn.execute(text(f"ALTER TABLE {table.fullname} ENABLE ROW LEVEL SECURITY"))
+                if f"{table.schema or 'public'}.{table.name}" not in secured:
+                    conn.execute(text(f"ALTER TABLE {table.fullname} ENABLE ROW LEVEL SECURITY"))
 
 
 def get_session(request: Request) -> Iterator[Session]:

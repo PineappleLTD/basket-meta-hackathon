@@ -6,10 +6,11 @@ import { use, useEffect, useRef, useState } from "react";
 import { useBaskets } from "@/components/BasketsContext";
 import { Logo } from "@/components/Logo";
 import { UnauthorizedError } from "@/lib/auth";
+import { useChat } from "@/components/ChatContext";
 import { createBasket, type Basket } from "@/lib/baskets";
 import { PositionLegend, PositionTable } from "@/components/PositionTable";
 import { errorText, pct } from "@/lib/format";
-import { selectPicks, type Selection } from "@/lib/theses";
+import type { Selection } from "@/lib/theses";
 
 type Props = { searchParams: Promise<{ theme?: string | string[] }> };
 
@@ -29,40 +30,14 @@ const STEPS = [
 ];
 const STEP_MS = 9000;
 
-type Turn = { id: number; thesis: string; result?: Selection; error?: string };
-
-// A ?theme=... param fills the form and starts the search.
+// The chat lives in ChatProvider, so leaving this page and coming back keeps it.
+// A ?theme=... param asks it as a new thesis, then drops off the URL so it isn't asked again.
 export default function Page({ searchParams }: Props) {
   const { theme } = use(searchParams);
   const initial = (Array.isArray(theme) ? theme[0] : theme)?.trim() ?? "";
-  // Remounts the chat when "new basket" is pressed in the sidebar. That remount can land
-  // before the URL drops ?theme=, so only the first draft takes the theme.
-  const { draftKey } = useBaskets();
-  return <Chat key={draftKey} initial={draftKey === 0 ? initial : ""} />;
-}
-
-function Chat({ initial }: { initial: string }) {
   const router = useRouter();
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [busy, setBusy] = useState(false);
+  const { turns, busy, ask } = useChat();
   const endRef = useRef<HTMLDivElement>(null);
-
-  async function ask(text: string) {
-    if (text.length < 3 || busy) return;
-    const id = Date.now();
-    setTurns((ts) => [...ts, { id, thesis: text }]);
-    setBusy(true);
-    const settle = (patch: Partial<Turn>) =>
-      setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-    try {
-      settle({ result: await selectPicks(text) });
-    } catch (err) {
-      if (err instanceof UnauthorizedError) return router.replace("/login");
-      settle({ error: errorText(err) });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   // Ref, not state: dev-mode Strict Mode runs effects twice and this must only fire once.
   const started = useRef(false);
@@ -70,6 +45,7 @@ function Chat({ initial }: { initial: string }) {
     if (started.current || initial.length < 3) return;
     started.current = true;
     ask(initial);
+    router.replace("/basket");
   }, []);
 
   // Keep the newest message in view as turns are added and answered.
@@ -102,7 +78,7 @@ function Chat({ initial }: { initial: string }) {
               </span>
               <div className="msg-body">
                 {t.result ? (
-                  <Picks result={t.result} />
+                  <Picks turnId={t.id} result={t.result} saved={t.saved} />
                 ) : t.error ? (
                   <div className="msg-error" role="alert">
                     <p>{t.error}</p>
@@ -116,7 +92,7 @@ function Chat({ initial }: { initial: string }) {
                     </button>
                   </div>
                 ) : (
-                  <Thinking />
+                  <Thinking since={t.id} />
                 )}
               </div>
             </div>
@@ -185,7 +161,8 @@ function Composer({
   examples?: string[];
   placeholder?: string;
 }) {
-  const [text, setText] = useState("");
+  // Kept in the chat context so a half-typed thesis survives leaving the page.
+  const { draft: text, setDraft: setText } = useChat();
   const ref = useRef<HTMLTextAreaElement>(null);
   const shownPlaceholder = useTypedPlaceholder(examples, placeholder);
   const ready = text.trim().length >= 3 && !busy;
@@ -251,15 +228,14 @@ function Composer({
   );
 }
 
-function Thinking() {
-  const [step, setStep] = useState(0);
+// Steps come from time since the request started, so leaving and coming back doesn't restart them.
+function Thinking({ since }: { since: number }) {
+  const stepAt = () => Math.min(Math.floor((Date.now() - since) / STEP_MS), STEPS.length - 1);
+  const [step, setStep] = useState(stepAt);
   useEffect(() => {
-    const t = setInterval(
-      () => setStep((s) => Math.min(s + 1, STEPS.length - 1)),
-      STEP_MS,
-    );
+    const t = setInterval(() => setStep(stepAt), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [since]);
 
   return (
     <div className="thinking">
@@ -280,10 +256,10 @@ function Thinking() {
   );
 }
 
-function Picks({ result }: { result: Selection }) {
+function Picks({ turnId, result, saved }: { turnId: number; result: Selection; saved?: Basket }) {
   const router = useRouter();
   const { addUntitled } = useBaskets();
-  const [saved, setSaved] = useState<Basket | null>(null);
+  const { markSaved } = useChat();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -293,7 +269,7 @@ function Picks({ result }: { result: Selection }) {
     try {
       // Saves instantly as "New basket"; the sidebar types in a generated title a moment later.
       const basket = await createBasket(null, result.summary, result.positions);
-      setSaved(basket);
+      markSaved(turnId, basket);
       addUntitled(basket);
     } catch (err) {
       if (err instanceof UnauthorizedError) return router.replace("/login");

@@ -133,7 +133,6 @@ export function TradePanel({ basket, account, held, question, onPreview, onTrade
             </button>
           ))}
         </div>
-        {account.mode === "paper" && <span className="ticket-mode">Paper</span>}
       </div>
 
       {active === "buy" && <BuyTab key="buy" {...shared} />}
