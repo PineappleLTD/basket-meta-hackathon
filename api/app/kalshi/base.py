@@ -24,6 +24,16 @@ class MarketData:
     yes_ask: float | None = None
 
 
+@dataclass(frozen=True)
+class MarketQuote:
+    """A market's current price, without the listing details only a full sync reads."""
+
+    yes_price: float
+    yes_bid: float | None = None
+    yes_ask: float | None = None
+    volume: float = 0.0
+
+
 # Ticker -> [(timestamp, yes_price)], oldest first.
 PriceHistory = dict[str, list[tuple[datetime, float]]]
 
@@ -51,6 +61,10 @@ class MarketSource(Protocol):
 
     def fetch_orderbooks(self, tickers: list[str]) -> dict[str, OrderBook]:
         """Current books. A ticker the source doesn't know is left out."""
+        ...
+
+    def fetch_quotes(self, tickers: list[str]) -> dict[str, MarketQuote]:
+        """Current prices of the tickers whose markets are still trading. Others are left out."""
         ...
 
     def fetch_results(self, tickers: list[str]) -> dict[str, float]:

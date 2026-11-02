@@ -23,6 +23,7 @@ export function AppHeader() {
           <Logo />
           basket
         </Link>
+        <span className="mode-badge" title="Paper trading: simulated cash, no real money">Paper</span>
         <DbStatus />
       </div>
       <AuthNav />

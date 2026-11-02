@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from app.kalshi.base import Level, MarketData, OrderBook, PriceHistory
+from app.kalshi.base import Level, MarketData, MarketQuote, OrderBook, PriceHistory
 
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 _PAGE_SIZE = 200
@@ -145,6 +145,20 @@ class KalshiClient:
                 book = entry.get("orderbook_fp") or {}
                 books[entry["ticker"]] = OrderBook(_levels(book.get("yes_dollars")), _levels(book.get("no_dollars")))
         return books
+
+    def fetch_quotes(self, tickers: list[str]) -> dict[str, MarketQuote]:
+        quotes = {}
+        for i in range(0, len(tickers), _LOOKUP_BATCH):
+            batch = tickers[i : i + _LOOKUP_BATCH]
+            data = self._get("/markets", {"tickers": ",".join(batch), "limit": len(batch)})
+            for m in data["markets"]:
+                if m["status"] != "active":
+                    continue
+                bid, ask = _dollars(m.get("yes_bid_dollars")), _dollars(m.get("yes_ask_dollars"))
+                price = _yes_price(bid, ask, _dollars(m.get("last_price_dollars")))
+                if price is not None:
+                    quotes[m["ticker"]] = MarketQuote(price, bid, ask, float(m.get("volume_fp") or 0))
+        return quotes
 
     def fetch_results(self, tickers: list[str]) -> dict[str, float]:
         results = {}

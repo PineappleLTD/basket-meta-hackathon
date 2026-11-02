@@ -5,7 +5,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from app.kalshi import KalshiClient, MarketData
+from app.kalshi import KalshiClient, MarketData, MarketQuote
 from app.models import Market, MarketPrice, utcnow
 from app.services import sync
 from app.services.sync import sync_markets
@@ -178,6 +178,22 @@ def test_fetch_results_keeps_only_resolved_markets():
         )
 
     assert _client(handler).fetch_results(["Y", "N", "OPEN", "SCALAR"]) == {"Y": 1.0, "N": 0.0, "SCALAR": 0.37}
+
+
+def test_fetch_quotes_prices_active_markets_in_batches(monkeypatch):
+    monkeypatch.setattr("app.kalshi.client._LOOKUP_BATCH", 2)
+    calls = []
+
+    def handler(request):
+        tickers = request.url.params["tickers"].split(",")
+        calls.append(tickers)
+        markets = [_market(t, status="finalized" if t == "DONE" else "active") for t in tickers]
+        return httpx.Response(200, json={"markets": markets})
+
+    quotes = _client(handler).fetch_quotes(["A", "DONE", "B"])
+    assert calls == [["A", "DONE"], ["B"]]
+    assert quotes.keys() == {"A", "B"}
+    assert quotes["A"] == MarketQuote(yes_price=0.42, yes_bid=0.40, yes_ask=0.44, volume=50000.0)
 
 
 class _FakeSource:
