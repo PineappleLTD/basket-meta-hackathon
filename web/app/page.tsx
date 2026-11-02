@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AuthNav } from "@/components/AuthNav";
+import { BasketAnimation } from "@/components/BasketAnimation";
 import { DbStatus } from "@/components/DbStatus";
 import { MarketGraph } from "@/components/MarketGraph";
 import { Logo } from "@/components/Logo";
@@ -71,14 +72,17 @@ export default function Home() {
       </section>
 
       <section className="explain">
-        <div className="explain-head">
-          <div className="eyebrow">How it works</div>
-          <h2>one idea can span many markets.</h2>
-          <p className="sub">
-            a single prediction market is a bet on one question. and a basket
-            spreads your view across many questions that depends on it, so one
-            surprise doesn&rsquo;t wipe you out.
-          </p>
+        <div className="explain-top">
+          <div className="explain-head">
+            <div className="eyebrow">How it works</div>
+            <h2>one idea can span many markets.</h2>
+            <p className="sub">
+              a single prediction market is a bet on one question. and a basket
+              spreads your view across many questions that depends on it, so one
+              surprise doesn&rsquo;t wipe you out.
+            </p>
+          </div>
+          <BasketAnimation />
         </div>
 
         <figure className="flow">

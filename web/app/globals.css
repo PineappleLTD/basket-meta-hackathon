@@ -110,6 +110,7 @@ a { color: inherit; text-decoration: none; }
 
 /* How it works */
 .explain { padding: 120px 0 40px; }
+.explain-top { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 24px; align-items: center; }
 .explain-head { max-width: 560px; }
 .explain h2 { margin: 16px 0 18px; font-size: clamp(32px, 4.4vw, 52px); line-height: 1.05; letter-spacing: -0.035em; font-weight: 600; }
 .explain .sub { font-size: 17px; line-height: 1.55; color: var(--muted); }
@@ -141,6 +142,52 @@ a { color: inherit; text-decoration: none; }
 
 .explain-cta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0 24px; margin-top: 112px; padding-top: 24px; border-top: 1px solid var(--line); }
 .explain-cta h2 { margin: 0; }
+
+/* Basket animation: scales with its width (640 x 540), so everything inside is sized in cqw or viewBox units */
+.bk {
+  --bk-a-top: #E6E6E8; --bk-a-left: #C9C9CC; --bk-a-right: #D9D9DC;
+  --bk-b-top: #B9B9BC; --bk-b-left: #8E8E92; --bk-b-right: #A4A4A8;
+  --bk-edge: #7A7A7E; --bk-side: #CFCFD2; --bk-wall: #D6D6D6; --bk-flow: #B5B5B5; --bk-inset: #A8A8A8;
+  --bk-rail: #D2D2D4; --bk-tick: #E2E2E4; --bk-leader: #C4C4C4; --bk-label: #6B6B6B;
+  --bk-f1: #EDEDEF; --bk-f2: #E9E9EB; --bk-f3: #F3F3F5; --bk-f4: #F6F6F8; --bk-f5: #FAFAFB;
+  width: 100%; max-width: 680px; container: bk / inline-size;
+}
+:root[data-theme="dark"] .bk {
+  --bk-a-top: #4C4C49; --bk-a-left: #2F2F2D; --bk-a-right: #3C3C3A;
+  --bk-b-top: #6C6C68; --bk-b-left: #464643; --bk-b-right: #585855;
+  --bk-edge: #141413; --bk-side: #3A3A37; --bk-wall: #3A3A37; --bk-flow: #5A5A56; --bk-inset: #5A5A56;
+  --bk-rail: #3A3A37; --bk-tick: #2E2D2A; --bk-leader: #4A4A47; --bk-label: var(--muted);
+  --bk-f1: #1F1F1E; --bk-f2: #232322; --bk-f3: #1A1A19; --bk-f4: #262625; --bk-f5: #2A2A28;
+}
+.bk-stage { position: relative; width: 100%; height: 84.375cqw; }
+.bk-stage > svg { position: absolute; left: 0; top: 0; width: 100%; overflow: visible; }
+.bk-cube { position: absolute; width: 9.0625cqw; overflow: visible; }
+.bk-cube polygon { stroke: var(--bk-edge); stroke-width: 0.6; stroke-linejoin: round; }
+
+.bk-f1 { fill: var(--bk-f1); } .bk-f2 { fill: var(--bk-f2); } .bk-f3 { fill: var(--bk-f3); } .bk-f4 { fill: var(--bk-f4); } .bk-f5 { fill: var(--bk-f5); }
+.bk-side { stroke: var(--bk-side); stroke-width: 1; stroke-linejoin: round; }
+.bk-front { fill-opacity: 0.94; }
+.bk-wall { stroke: var(--bk-wall); stroke-width: 1; stroke-linejoin: round; }
+.bk-rim { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.bk-rail { stroke: var(--bk-rail); stroke-width: 1; }
+.bk-tick line { stroke: var(--bk-tick); stroke-width: 1; }
+.bk-thesis-top { fill: var(--bk-f4); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.bk-thesis-inset { fill: none; stroke: var(--bk-inset); stroke-width: 1; stroke-dasharray: 3 4; }
+.bk-input { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.bk-flow { fill: none; stroke: var(--bk-flow); stroke-width: 1; stroke-dasharray: 3 5; animation: bk-flow 1.2s linear infinite; }
+.bk-caret { animation: bk-caret 1s steps(1) infinite; }
+@keyframes bk-flow { to { stroke-dashoffset: -16; } }
+@keyframes bk-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bk-flow, .bk-caret { animation: none; } }
+
+.bk-labels polyline { fill: none; stroke: var(--bk-leader); stroke-width: 1; }
+.bk-labels text { font: 400 12px var(--sans); fill: var(--bk-label); }
+.bk-labels .bk-label-head { font-size: 14px; font-weight: 500; fill: var(--ink); }
+.bk-labels .bk-label-mono { font: 400 11px var(--mono); }
+.bk-swatch-a, .bk-swatch-b { stroke: var(--bk-edge); stroke-width: 0.6; }
+.bk-swatch-a { fill: var(--bk-a-top); }
+.bk-swatch-b { fill: var(--bk-b-right); }
+@container bk (max-width: 520px) { .bk-labels { display: none; } }
 
 /* Market graph */
 .kg { position: relative; width: 100%; aspect-ratio: 1; max-height: calc(100svh - 180px); overflow: hidden; user-select: none; pointer-events: none; }
@@ -624,6 +671,8 @@ details[open] > .hist-row .hist-what { color: var(--accent); }
   .welcome .sub { font-size: 16px; }
   .kg { max-height: none; }
   .explain { padding-top: 88px; }
+  .explain-top { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .bk { margin: 0 auto; }
   .flow { grid-template-columns: 1fr; gap: 16px; padding: 28px 0; }
   .fl-arrow { justify-self: center; transform: rotate(90deg); }
   .fl-loop ol { grid-template-columns: 1fr; gap: 28px; }
