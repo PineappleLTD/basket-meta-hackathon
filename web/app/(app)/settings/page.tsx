@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAccount } from "@/components/AccountContext";
 import { useBaskets } from "@/components/BasketsContext";
 import { getMe, UnauthorizedError, type User } from "@/lib/auth";
-import { getAccount, resetAccount, type Account } from "@/lib/accounts";
+import { resetAccount } from "@/lib/accounts";
 import { errorText, signedPct, usd } from "@/lib/format";
 
 // Settings for the whole account, not one basket: who's signed in, the balance, and a reset.
@@ -12,7 +13,7 @@ export default function Page() {
   const router = useRouter();
   const { refresh } = useBaskets();
   const [user, setUser] = useState<User | null>(null);
-  const [account, setAccount] = useState<Account | null>(null);
+  const { account, setAccount } = useAccount();
   const [error, setError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
 
@@ -23,7 +24,6 @@ export default function Page() {
 
   useEffect(() => {
     getMe().then(setUser);
-    getAccount().then(setAccount).catch(fail);
   }, []);
 
   async function reset() {

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cents, date, pct } from "@/lib/format";
+import { InfoTip } from "./InfoTip";
 import type { Market, Side } from "@/lib/theses";
 
 export interface PositionRow {
@@ -24,8 +25,14 @@ export function PositionTable({ rows }: { rows: PositionRow[] }) {
         <tr>
           <th scope="col">Market</th>
           <th scope="col">Side</th>
-          <th scope="col" className="num">Price</th>
-          <th scope="col" className="num">Weight</th>
+          <th scope="col" className="num">
+            Price
+            <InfoTip end>Current price per contract. A contract pays $1 if its side wins, so the price is roughly the market&rsquo;s implied probability.</InfoTip>
+          </th>
+          <th scope="col" className="num">
+            Target weight
+            <InfoTip end>Share of the basket allocated to this market. Weights add up to 100%.</InfoTip>
+          </th>
         </tr>
       </thead>
       <tbody>

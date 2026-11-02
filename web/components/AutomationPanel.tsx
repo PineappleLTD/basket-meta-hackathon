@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { UnauthorizedError } from "@/lib/auth";
+import { InfoTip } from "./InfoTip";
 import {
   cancelConditionalOrder,
   createConditionalOrder,
@@ -76,12 +77,15 @@ export function AutomationPanel({ basketId, nav, holding, onUnauthorized }: Prop
   return (
     <div className="ticket auto">
       <div className="ticket-head">
-        <h2>Automate</h2>
+        <h2>Automation</h2>
         <span className="ticket-mode">Checked on each price sync</span>
       </div>
 
       <label className="auto-row">
-        <span>Rebalance automatically</span>
+        <span>
+          Auto-rebalance
+          <InfoTip>Trades your position back to target weights whenever any market drifts past the threshold you pick.</InfoTip>
+        </span>
         <select
           value={automation.auto_rebalance_drift ?? ""}
           onChange={(e) => save({ ...current, auto_rebalance_drift: e.target.value ? Number(e.target.value) : null })}
@@ -100,7 +104,10 @@ export function AutomationPanel({ basketId, nav, holding, onUnauthorized }: Prop
       {automation.note && <p className="invest-fine">{automation.note}</p>}
 
       <div className="auto-triggers">
-        <h3>Price triggers</h3>
+        <h3>
+          Conditional orders
+          <InfoTip>Orders that run when the basket&rsquo;s NAV crosses a level you set: stop-loss, take-profit or buy the dip.</InfoTip>
+        </h3>
         {open.length === 0 && <p className="invest-fine">None set.</p>}
         <ul className="auto-list">
           {open.map((t) => (
@@ -172,7 +179,10 @@ function Recurring({ automation, onSave }: { automation: Automation; onSave: (am
   return (
     <div className="auto-recurring">
       <label className="auto-row">
-        <span>Recurring buy</span>
+        <span>
+          Recurring investment
+          <InfoTip>Buys the basket for a fixed dollar amount on a schedule (dollar-cost averaging).</InfoTip>
+        </span>
         <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
           <option value={0}>Off</option>
           {RECURRING_OPTIONS.map(([d, label]) => (

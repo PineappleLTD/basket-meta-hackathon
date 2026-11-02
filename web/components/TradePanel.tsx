@@ -16,6 +16,7 @@ import {
 } from "@/lib/accounts";
 import type { Basket } from "@/lib/baskets";
 import { errorText, pct, signedPct, signedUsd, usd } from "@/lib/format";
+import { InfoTip } from "./InfoTip";
 
 const QUICK_AMOUNTS = [50, 100, 500, 1000];
 const SELL_FRACTIONS = [0.25, 0.5, 0.75, 1];
@@ -129,7 +130,7 @@ export function TradePanel({ basket, account, held, question, onPreview, onTrade
               disabled={!held && t !== "buy"}
               onClick={() => pick(t)}
             >
-              {t === "buy" ? (held ? "Add" : "Invest") : t === "sell" ? "Sell" : "Rebalance"}
+              {t === "buy" ? "Buy" : t === "sell" ? "Sell" : "Rebalance"}
             </button>
           ))}
         </div>
@@ -149,30 +150,59 @@ function HoldingSummary({ held, onRebalance }: { held: BasketHoldings; onRebalan
   return (
     <div className="ticket-held">
       <div className="ticket-head">
-        <h2>Your holding</h2>
+        <h2>Your position</h2>
       </div>
       <dl className="ticket-rows">
-        <Row label="Value" value={usd(held.value)} />
-        <Row label="If sold now" value={usd(held.liquidation_value)} hint="At the best bids, after fees" />
-        <Row label="Cost" value={usd(held.cost)} />
-        <Row label="Unrealized" value={signedUsd(held.unrealized_pnl)} tone={held.unrealized_pnl} />
-        {held.realized_pnl !== 0 && <Row label="Realized" value={signedUsd(held.realized_pnl)} tone={held.realized_pnl} />}
+        <Row label="Market value" value={usd(held.value)} tip="Your contracts valued at current mid prices." />
+        <Row
+          label="Liquidation value"
+          value={usd(held.liquidation_value)}
+          tip="What you would receive selling everything now: filled at the best bids, after fees."
+        />
+        <Row label="Cost basis" value={usd(held.cost)} tip="What you paid for the contracts you still hold, including fees." />
+        <Row
+          label="Unrealized P&L"
+          value={signedUsd(held.unrealized_pnl)}
+          tone={held.unrealized_pnl}
+          tip="Market value minus cost basis: your gain or loss on open contracts."
+        />
+        {held.realized_pnl !== 0 && (
+          <Row
+            label="Realized P&L"
+            value={signedUsd(held.realized_pnl)}
+            tone={held.realized_pnl}
+            tip="Gains or losses locked in by sales and market payouts."
+          />
+        )}
         {held.holding_return !== null && (
-          <Row label="Your return" value={signedPct(held.holding_return, 2)} tone={held.holding_return} />
+          <Row
+            label="Total return"
+            value={signedPct(held.holding_return, 2)}
+            tone={held.holding_return}
+            tip="Change in your position's value per share since you opened it. Deposits and withdrawals don't affect it."
+          />
         )}
         {held.index_return !== null && (
-          <Row label="Basket, same period" value={signedPct(held.index_return, 2)} tone={held.index_return} />
+          <Row
+            label="Index return"
+            value={signedPct(held.index_return, 2)}
+            tone={held.index_return}
+            tip="The basket index's change over the same period, before trading costs. Your benchmark."
+          />
+        )}
+        {ahead !== null && (
+          <Row
+            label="Tracking difference"
+            value={signedPct(ahead, 2)}
+            tone={ahead}
+            tip={`Total return minus index return. ${
+              ahead < 0
+                ? "Below zero is the cost of trading: spreads, fees and whole-contract rounding."
+                : "Above zero comes from rounding and timing."
+            }`}
+          />
         )}
       </dl>
-      {ahead !== null && (
-        <p className="invest-fine">
-          {Math.abs(ahead) < 0.0005
-            ? "Your holding is tracking the basket."
-            : `${ahead < 0 ? "Behind" : "Ahead of"} the basket by ${pct(Math.abs(ahead), 2)}: ${
-                ahead < 0 ? "spreads, fees and whole-contract rounding" : "rounding and timing"
-              }.`}
-        </p>
-      )}
       {held.max_drift > DRIFT_ALERT && (
         <div className="ticket-alert" role="status">
           <p>
@@ -187,10 +217,13 @@ function HoldingSummary({ held, onRebalance }: { held: BasketHoldings; onRebalan
   );
 }
 
-function Row({ label, value, tone, hint }: { label: string; value: string; tone?: number; hint?: string }) {
+function Row({ label, value, tone, tip }: { label: string; value: string; tone?: number; tip?: string }) {
   return (
     <div>
-      <dt title={hint}>{label}</dt>
+      <dt>
+        {label}
+        {tip && <InfoTip>{tip}</InfoTip>}
+      </dt>
       <dd className={tone === undefined ? undefined : tone < 0 ? "down" : "up"}>{value}</dd>
     </div>
   );
@@ -225,7 +258,7 @@ function BuyTab({ basket, account, question, busy, done, failed, run, onPreview,
   return (
     <>
       <label htmlFor="amount" className="invest-label">
-        Amount <span>{usd(account.cash)} available</span>
+        Amount <span>{usd(account.cash)} buying power</span>
       </label>
       <div className="invest-field">
         <span aria-hidden="true">$</span>
@@ -266,11 +299,15 @@ function BuyTab({ basket, account, question, busy, done, failed, run, onPreview,
       >
         {preview && (
           <>
-            <Row label="Markets bought" value={`${preview.orders.length} of ${basket.positions.length}`} />
+            <Row
+              label="Markets"
+              value={`${preview.orders.length} of ${basket.positions.length}`}
+              tip="Markets this order buys into. Closed markets, or ones too small to buy a whole contract, are skipped."
+            />
             <Costs preview={preview} />
-            <Row label="Cash after" value={usd(preview.cash_after)} />
+            <Row label="Buying power after" value={usd(preview.cash_after)} />
             <div className="ticket-total">
-              <dt>Total</dt>
+              <dt>Estimated cost</dt>
               <dd>{usd(spend)}</dd>
             </div>
           </>
@@ -302,7 +339,12 @@ function SellTab({ basket, question, busy, done, failed, run, onPreview, onUnaut
 
   return (
     <>
-      <p className="invest-label">Share of each holding to sell</p>
+      <p className="invest-label">
+        <span>
+          Quantity
+          <InfoTip>Sells this share of every market in your position, so what&rsquo;s left keeps the same weights.</InfoTip>
+        </span>
+      </p>
       <div className="invest-chips">
         {SELL_FRACTIONS.map((f) => (
           <button
@@ -323,11 +365,11 @@ function SellTab({ basket, question, busy, done, failed, run, onPreview, onUnaut
       <Outcome problem={failed ?? problem} done={done} pricing={pricing} preview={preview} question={question}>
         {preview && (
           <>
-            <Row label="Markets sold" value={`${preview.orders.length}`} />
+            <Row label="Markets" value={`${preview.orders.length}`} />
             <Costs preview={preview} />
-            <Row label="Cash after" value={usd(preview.cash_after)} />
+            <Row label="Buying power after" value={usd(preview.cash_after)} />
             <div className="ticket-total">
-              <dt>You receive</dt>
+              <dt>Estimated proceeds</dt>
               <dd>{usd(receive)}</dd>
             </div>
           </>
@@ -380,7 +422,7 @@ function RebalanceTab({ basket, held, question, busy, done, failed, run, onPrevi
             <Row label="Orders" value={`${sells} ${plural(sells, "sell")}, ${buys} ${plural(buys, "buy")}`} />
             <Costs preview={preview} />
             <div className="ticket-total">
-              <dt>Net cash</dt>
+              <dt>Net cash impact</dt>
               <dd>{signedUsd(preview.cash_delta)}</dd>
             </div>
           </>
@@ -402,9 +444,13 @@ function RebalanceTab({ basket, held, question, busy, done, failed, run, onPrevi
 function Costs({ preview }: { preview: TradePreview }) {
   return (
     <>
-      <Row label="Fees" value={usd(preview.fees)} />
+      <Row label="Est. fees" value={usd(preview.fees)} tip="Exchange trading fees for this order." />
       {preview.price_impact >= SHOWN_IMPACT && (
-        <Row label="Price impact" value={usd(preview.price_impact)} hint="Walking the order book past the best price" />
+        <Row
+          label="Est. slippage"
+          value={usd(preview.price_impact)}
+          tip="Extra cost from filling past the best price when the top of the order book isn't deep enough."
+        />
       )}
     </>
   );
