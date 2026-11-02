@@ -16,7 +16,8 @@ from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
 from app.models import AccountMode, Market
 from app.routers import accounts, auth, baskets, markets, theses
-from app.services.sync import refresh, refresh_live
+from app.routers.common import sync_now
+from app.services.sync import refresh_live
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,8 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
         app.state.sessionmaker = sessionmaker(engine, expire_on_commit=False)
 
         app.state.sync_lock = threading.Lock()
+        # time.monotonic() when the last sync started; None until one finishes.
+        app.state.synced_at = None
         with app.state.sessionmaker() as session:
             has_markets = session.execute(select(Market.id).limit(1)).first() is not None
         app.state.market_source = market_source or KalshiClient(
@@ -110,16 +113,10 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
     return app
 
 
-def _refresh(app: FastAPI) -> dict[str, int]:
-    """Sync and run automations. The caller holds app.state.sync_lock."""
-    with app.state.sessionmaker() as session:
-        return refresh(session, app.state.market_source, app.state.brokers, app.state.settings.backfill_days)
-
-
 def _seed(app: FastAPI) -> None:
     with app.state.sync_lock:
         try:
-            log.info("Seeded markets: %s", _refresh(app))
+            log.info("Seeded markets: %s", sync_now(app.state))
         except Exception:
             log.exception("Seeding markets failed; call POST /markets/sync to retry")
 
@@ -130,7 +127,7 @@ def _schedule(app: FastAPI, stop: threading.Event) -> None:
         if not app.state.sync_lock.acquire(blocking=False):
             continue
         try:
-            log.info("Scheduled sync: %s", _refresh(app))
+            log.info("Scheduled sync: %s", sync_now(app.state))
         except Exception:
             log.exception("Scheduled sync failed; trying again next interval")
         finally:
