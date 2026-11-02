@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime
 
-from sqlalchemy import insert, or_, select
+from sqlalchemy import insert, or_, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.brokers import Broker
@@ -33,15 +34,16 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int, now
     fetched = list({d.external_id: d for d in source.fetch_markets()}.values())
     existing = {m.external_id: m for m in session.scalars(select(Market))}
     new = []
+    updates = []
     for data in fetched:
         market = existing.get(data.external_id)
         if market is None:
-            market = Market(external_id=data.external_id)
+            market = Market(**vars(data), quoted_at=now)
             session.add(market)
             new.append(market)
-        for field, value in vars(data).items():
-            setattr(market, field, value)
-        market.quoted_at = now
+        else:
+            updates.append((market, {**vars(data), "quoted_at": now, "updated_at": now}))
+    _update_markets(session, updates)
 
     seen = {d.external_id for d in fetched}
     closed = [m for ticker, m in existing.items() if ticker not in seen and m.is_open]
@@ -98,14 +100,29 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int, now
     }
 
 
-def _resolve(session: Session, source: MarketSource, now: datetime) -> int:
-    """Look up results for closed, unresolved markets that a basket or holding uses."""
-    used = or_(
+def _update_markets(session: Session, updates: list[tuple[Market, dict]]) -> None:
+    """Write new column values to existing markets in one bulk UPDATE, and to the loaded
+    objects without marking them changed. Flushing them as changed objects instead takes a
+    round trip per distinct set of changed columns, thousands against Postgres."""
+    for market, values in updates:
+        for field, value in values.items():
+            set_committed_value(market, field, value)
+    if updates:
+        session.execute(update(Market), [{"id": market.id, **values} for market, values in updates])
+
+
+def _in_use():
+    """Markets that a basket or holding uses."""
+    return or_(
         Market.id.in_(select(Holding.market_id)),
         Market.external_id.in_(select(BasketPosition.market_ticker)),
     )
+
+
+def _resolve(session: Session, source: MarketSource, now: datetime) -> int:
+    """Look up results for closed, unresolved markets that a basket or holding uses."""
     pending = session.scalars(
-        select(Market).where(Market.is_open.is_(False), Market.settlement_price.is_(None), used)
+        select(Market).where(Market.is_open.is_(False), Market.settlement_price.is_(None), _in_use())
     ).all()
     if not pending:
         return 0
@@ -135,3 +152,37 @@ def refresh(
     counts = sync_markets(session, source, backfill_days, now)
     counts["automated"] = automation.run(session, brokers, now)
     return counts
+
+
+def quote_markets(session: Session, source: MarketSource, markets: list[Market], now: datetime | None = None) -> int:
+    """Re-price `markets` from the source's current quotes, without committing. Returns how many
+    were quoted; markets the source no longer trades are left for the next full sync.
+
+    Only the market rows change. Price history keeps one point per full sync, so quoting
+    every few seconds doesn't grow it.
+    """
+    if not markets:
+        return 0
+    now = now or utcnow()
+    quotes = source.fetch_quotes([m.external_id for m in markets])
+    updates = [
+        (m, {**vars(quotes[m.external_id]), "quoted_at": now, "updated_at": now})
+        for m in markets
+        if m.external_id in quotes
+    ]
+    _update_markets(session, updates)
+    return len(updates)
+
+
+def refresh_live(session: Session, source: MarketSource, brokers: dict[AccountMode, Broker]) -> dict[str, int]:
+    """Re-price the open markets that a basket or holding uses, then place the automated
+    trades that are due. Runs every few seconds between full syncs, so basket values,
+    holdings and conditional orders follow Kalshi's prices without paging the whole catalog.
+    """
+    now = utcnow()
+    markets = session.scalars(
+        select(Market).where(Market.is_open.is_(True), Market.settlement_price.is_(None), _in_use())
+    ).all()
+    quoted = quote_markets(session, source, list(markets), now)
+    session.commit()
+    return {"quoted": quoted, "automated": automation.run(session, brokers, now)}

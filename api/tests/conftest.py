@@ -27,6 +27,7 @@ def app():
         # Every trade sees the fake's current book; tests that want caching build their own broker.
         paper_quote_cache_seconds=0,
         sync_interval_minutes=0,
+        live_refresh_seconds=0,
         _env_file=None,
     )
     return create_app(settings, FakeKalshi(seed=0))

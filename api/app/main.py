@@ -16,7 +16,7 @@ from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
 from app.models import AccountMode, Market
 from app.routers import accounts, auth, baskets, markets, theses
-from app.services.sync import refresh
+from app.services.sync import refresh, refresh_live
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +79,8 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
         stop = threading.Event()
         if settings.sync_interval_minutes > 0:
             threading.Thread(target=_schedule, args=(app, stop), daemon=True).start()
+        if settings.live_refresh_seconds > 0:
+            threading.Thread(target=_live, args=(app, stop), daemon=True).start()
         yield
         stop.set()
         engine.dispose()
@@ -131,6 +133,23 @@ def _schedule(app: FastAPI, stop: threading.Event) -> None:
             log.info("Scheduled sync: %s", _refresh(app))
         except Exception:
             log.exception("Scheduled sync failed; trying again next interval")
+        finally:
+            app.state.sync_lock.release()
+
+
+def _live(app: FastAPI, stop: threading.Event) -> None:
+    """Re-price markets in use every live_refresh_seconds until `stop`. Skips a turn while a
+    sync runs, so automations never run twice at once; the sync re-prices everything anyway."""
+    while not stop.wait(app.state.settings.live_refresh_seconds):
+        if not app.state.sync_lock.acquire(blocking=False):
+            continue
+        try:
+            with app.state.sessionmaker() as session:
+                counts = refresh_live(session, app.state.market_source, app.state.brokers)
+            if counts["automated"]:
+                log.info("Live refresh: %s", counts)
+        except Exception:
+            log.warning("Live refresh failed; trying again next interval", exc_info=True)
         finally:
             app.state.sync_lock.release()
 
