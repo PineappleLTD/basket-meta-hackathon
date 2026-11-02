@@ -41,6 +41,7 @@ Env vars (or `.env` at the repo root / in `api/`), all prefixed `PMETF_`:
 | `PMETF_PAPER_QUOTE_CACHE_SECONDS`  | `15` – how long a fetched order book is reused (preview, then the order)      |
 | `PMETF_PAPER_MAX_QUOTE_AGE_MINUTES`| `30` – oldest stored quote paper fills fall back to when Kalshi is unreachable |
 | `PMETF_SYNC_INTERVAL_MINUTES`      | `15` – background sync (settlement, automations); `0` turns it off            |
+| `PMETF_SYNC_MAX_AGE_MINUTES`       | `15` – `/theses/select` syncs first when the last sync is older; `0` turns it off |
 | `PMETF_CORS_ORIGINS`               | `["http://localhost:3000", "http://localhost:5173"]`                          |
 | `META` (or `PMETF_META_API_KEY`)   | unset – Meta Model API key (`LLM_…`); `/theses/select` returns 503 without it |
 | `PMETF_LLAMA_MODEL`                | `muse-spark-1.3`                                                              |

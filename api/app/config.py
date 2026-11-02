@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # Sync markets (settling resolved ones and running automations) this often in the
     # background. 0 turns it off; POST /markets/sync and sync.py still work.
     sync_interval_minutes: float = 15
+    # POST /theses/select syncs first when the last sync is older than this, so a thesis sees
+    # current markets even after the background sync was off or the host slept. 0 turns it off.
+    sync_max_age_minutes: float = 15
     # Between syncs, re-price just the markets that baskets and holdings use, and run
     # automations, this often. About one Kalshi request per 50 markets. 0 turns it off.
     live_refresh_seconds: float = 10

@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.llm import LLMError, MetaLlama, parse_json_object
-from app.models import Market
+from app.models import Market, MarketPrice
 
 
 class FakeLLM:
@@ -123,6 +123,47 @@ def test_select_skips_near_certain_markets(client, session, use_llm):
     llm = use_llm(FakeLLM(["fed"], lambda c: [{"market_id": i, "side": "yes", "relevance": 1} for i in c]))
     assert client.post("/theses/select", json={"thesis": "Rates fall"}).status_code == 422
     assert len(llm.calls) == 1
+
+
+def _price_points(session):
+    return session.query(MarketPrice).count()
+
+
+def _select(client, use_llm):
+    """A thesis request with a fresh FakeLLM, which answers one request."""
+    use_llm(FakeLLM(["fed"], lambda c: [{"market_id": i, "side": "yes", "relevance": 0.9} for i in c]))
+    return client.post("/theses/select", json={"thesis": "Rates fall"})
+
+
+def test_select_syncs_first_when_markets_are_stale(app, client, session, use_llm):
+    before = _price_points(session)
+    _select(client, use_llm)
+    assert _price_points(session) == before  # the startup sync is fresh
+
+    app.state.synced_at -= 16 * 60
+    _select(client, use_llm)
+    after = _price_points(session)
+    assert after > before
+    _select(client, use_llm)
+    assert _price_points(session) == after
+
+
+def test_select_sync_can_be_turned_off(app, client, session, use_llm):
+    app.state.settings.sync_max_age_minutes = 0
+    app.state.synced_at = None
+    before = _price_points(session)
+    _select(client, use_llm)
+    assert _price_points(session) == before
+
+
+def test_select_carries_on_when_the_sync_fails(app, client, use_llm, monkeypatch):
+    def down():
+        raise RuntimeError("Kalshi down")
+
+    monkeypatch.setattr(app.state.market_source, "fetch_markets", down)
+    app.state.synced_at = None
+    assert _select(client, use_llm).status_code == 200
+    assert app.state.synced_at is None
 
 
 @pytest.mark.parametrize("text", ['{"a": 1}', '```json\n{"a": 1}\n```', 'Sure! {"a": 1} Hope that helps.'])

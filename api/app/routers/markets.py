@@ -7,9 +7,8 @@ from sqlalchemy import func, select
 from app.auth import CurrentUser
 from app.db import SessionDep
 from app.models import Market, MarketPrice
-from app.routers.common import HistoryLimit, get_or_404, history
+from app.routers.common import HistoryLimit, get_or_404, history, sync_now
 from app.schemas import MarketOut, MarketPage, PricePoint, SyncCounts
-from app.services.sync import refresh
 
 router = APIRouter(prefix="/markets", tags=["markets"])
 
@@ -48,7 +47,7 @@ def get_prices(market_id: int, session: SessionDep, since: datetime | None = Non
 
 
 @router.post("/sync", response_model=SyncCounts)
-def sync(request: Request, session: SessionDep, _user: CurrentUser):
+def sync(request: Request, _user: CurrentUser):
     """Pull markets from Kalshi, upsert them, settle resolved ones, record prices and NAVs, and
     place automated trades that are due. Requires sign-in.
 
@@ -59,6 +58,6 @@ def sync(request: Request, session: SessionDep, _user: CurrentUser):
     if not state.sync_lock.acquire(blocking=False):
         raise HTTPException(409, "A sync is already running")
     try:
-        return refresh(session, state.market_source, state.brokers, state.settings.backfill_days)
+        return sync_now(state)
     finally:
         state.sync_lock.release()

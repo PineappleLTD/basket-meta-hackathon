@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { useAccount } from "@/components/AccountContext";
 import { AutomationPanel } from "@/components/AutomationPanel";
 import { BasketName } from "@/components/BasketName";
+import { ClimatePanel } from "@/components/ClimatePanel";
+import { ClimateSettingsCard } from "@/components/ClimateSettingsCard";
 import { useBaskets } from "@/components/BasketsContext";
 import { InfoTip } from "@/components/InfoTip";
 import { NavChart } from "@/components/NavChart";
@@ -28,6 +30,13 @@ import {
   type Basket,
   type NavPoint,
 } from "@/lib/baskets";
+import {
+  DEFAULT_CLIMATE_SETTINGS,
+  getClimate,
+  saveClimateSettings,
+  type Climate,
+  type ClimateSettings,
+} from "@/lib/climate";
 import { date, dateTime, errorText, pct, signedPct, usd } from "@/lib/format";
 import { usePoll } from "@/lib/poll";
 
@@ -59,6 +68,8 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [climate, setClimate] = useState<Climate | null>(null);
+  const [climateSettings, setClimateSettings] = useState<ClimateSettings>(DEFAULT_CLIMATE_SETTINGS);
 
   function fail(err: unknown) {
     if (err instanceof UnauthorizedError) router.replace("/login");
@@ -89,6 +100,21 @@ export default function Page() {
       .catch(() => setHistory([]));
     loadActivity();
   }, [id]);
+
+  // The news climate is read once per basket; the classifier refreshes it on its own schedule.
+  const basketId = basket?.id;
+  useEffect(() => {
+    if (!basket) return;
+    setClimate(null);
+    getClimate(basket.id, basket.positions)
+      .then(setClimate)
+      .catch(() => setClimate(null));
+  }, [basketId]);
+
+  function changeClimateSettings(next: ClimateSettings) {
+    setClimateSettings(next);
+    if (basket) saveClimateSettings(basket.id, next).catch(() => {});
+  }
 
   // Follow live prices. A failed poll keeps what's shown; the next one tries again.
   usePoll(() => {
@@ -256,6 +282,14 @@ export default function Page() {
               </p>
             </section>
 
+            <ClimatePanel
+              basketId={basket.id}
+              positions={basket.positions}
+              climate={climate}
+              settings={climateSettings}
+              question={question}
+            />
+
             <section className="bd-section">
               <h2>
                 Activity <span className="bd-count">{orders.length}</span>
@@ -302,6 +336,11 @@ export default function Page() {
             ) : (
               !error && <p className="bd-status">{accountError ?? "Loading account…"}</p>
             )}
+            <ClimateSettingsCard
+              settings={climateSettings}
+              regime={climate?.regime ?? null}
+              onChange={changeClimateSettings}
+            />
           </aside>
         </div>
       </div>
