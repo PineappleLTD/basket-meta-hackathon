@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { UnauthorizedError } from "@/lib/auth";
 import { listBaskets, titleBasket, type Basket } from "@/lib/baskets";
 import { errorText } from "@/lib/format";
+import { usePoll } from "@/lib/poll";
 
 interface BasketsState {
   // null until the first load finishes.
@@ -15,8 +16,7 @@ interface BasketsState {
   addUntitled: (basket: Basket) => void;
   // "pending" while a basket's title is being generated, "typing" once it arrives (the UI types it out).
   titles: Record<number, TitleState>;
-  // Bumped by "new basket" so the composer resets even when it's already open.
-  draftKey: number;
+  // Opens the thesis chat.
   newDraft: () => void;
 }
 
@@ -31,7 +31,6 @@ export function BasketsProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [baskets, setBaskets] = useState<Basket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [draftKey, setDraftKey] = useState(0);
   const [titles, setTitles] = useState<Record<number, TitleState>>({});
 
   const refresh = useCallback(async () => {
@@ -65,13 +64,15 @@ export function BasketsProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  // Keeps the sidebar's values in step with live prices.
+  usePoll(refresh);
+
   const newDraft = useCallback(() => {
-    setDraftKey((k) => k + 1);
     router.push("/basket");
   }, [router]);
 
   return (
-    <BasketsContext.Provider value={{ baskets, error, refresh, addUntitled, titles, draftKey, newDraft }}>{children}</BasketsContext.Provider>
+    <BasketsContext.Provider value={{ baskets, error, refresh, addUntitled, titles, newDraft }}>{children}</BasketsContext.Provider>
   );
 }
 

@@ -3,6 +3,8 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const TOKEN_KEY = "basket.token";
+// The thesis chat (see ChatContext). Cleared with every token change so it never outlives the session.
+export const CHAT_KEY = "basket.chat";
 
 export interface User {
   id: number;
@@ -20,6 +22,7 @@ export function getToken(): string | null {
 
 function setToken(token: string | null) {
   try {
+    localStorage.removeItem(CHAT_KEY);
     if (token) localStorage.setItem(TOKEN_KEY, token);
     else localStorage.removeItem(TOKEN_KEY);
   } catch {}

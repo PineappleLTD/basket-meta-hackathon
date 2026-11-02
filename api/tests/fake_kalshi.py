@@ -4,7 +4,7 @@ import math
 import random
 from datetime import UTC, datetime, timedelta
 
-from app.kalshi.base import MarketData, OrderBook, PriceHistory
+from app.kalshi.base import MarketData, MarketQuote, OrderBook, PriceHistory
 
 
 # Shared shocks that move groups of markets together. A market's loading scales its
@@ -84,6 +84,15 @@ class FakeKalshi:
                     no_bids=tuple((round(1 - ask - i / 100, 4), BOOK_DEPTH) for i in range(BOOK_LEVELS)),
                 )
         return books
+
+    def fetch_quotes(self, tickers: list[str]) -> dict[str, MarketQuote]:
+        """Current prices, without advancing the walk."""
+        volumes = {f[0]: float(f[4]) for f in _FIXTURES}
+        return {
+            t: MarketQuote(self._prices[t], *self._quotes(t), volumes[t])
+            for t in tickers
+            if t in self._prices and t not in self.results
+        }
 
     def fetch_results(self, tickers: list[str]) -> dict[str, float]:
         return {t: self.results[t] for t in tickers if t in self.results}

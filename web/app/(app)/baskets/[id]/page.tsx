@@ -14,7 +14,6 @@ import {
   getAccount,
   getStakeHistory,
   listOrders,
-  resetAccount,
   type Account,
   type BasketOrder,
   type StakePoint,
@@ -29,6 +28,7 @@ import {
   type NavPoint,
 } from "@/lib/baskets";
 import { date, dateTime, errorText, pct, signedPct, usd } from "@/lib/format";
+import { usePoll } from "@/lib/poll";
 
 // Categories past this many are folded into "Other".
 const TOP_CATEGORIES = 5;
@@ -40,6 +40,8 @@ export default function Page() {
   const { id } = useParams<{ id: string }>();
   const { refresh, baskets, titles } = useBaskets();
   const [basket, setBasket] = useState<Basket | null>(null);
+  // When `basket` was read: the chart ends with its live value at this time.
+  const [pricedAt, setPricedAt] = useState<string | null>(null);
   // The sidebar's copy has the latest name: a just-saved basket gets its title after it opens.
   const name =
     (basket && baskets?.find((b) => b.id === basket.id)?.name) ??
@@ -72,8 +74,14 @@ export default function Page() {
       .catch(() => setMine([]));
   }
 
+  async function loadBasket() {
+    const next = await getBasket(id);
+    setBasket(next);
+    setPricedAt(new Date().toISOString());
+  }
+
   useEffect(() => {
-    getBasket(id).then(setBasket).catch(fail);
+    loadBasket().catch(fail);
     getAccount().then(setAccount).catch(fail);
     // The chart is extra: without history the page still works.
     getNavHistory(id)
@@ -81,6 +89,12 @@ export default function Page() {
       .catch(() => setHistory([]));
     loadActivity();
   }, [id]);
+
+  // Follow live prices. A failed poll keeps what's shown; the next one tries again.
+  usePoll(() => {
+    loadBasket().catch(() => {});
+    getAccount().then(setAccount).catch(() => {});
+  });
 
   async function remove() {
     if (!basket || !confirm(`Delete "${name}"?`)) return;
@@ -96,22 +110,12 @@ export default function Page() {
     }
   }
 
-  async function reset() {
-    if (!confirm("Reset your paper account? Every holding, trade and automation in every basket is cleared, and cash goes back to the start.")) return;
-    try {
-      setAccount(await resetAccount());
-      loadActivity();
-    } catch (err) {
-      fail(err);
-    }
-  }
-
   // A trade moves the basket's value too (a rebalance resets its weights), so reload it alongside the account.
   async function traded(next: Account) {
     setAccount(next);
     setPreview(null);
     loadActivity();
-    if (basket) setBasket(await getBasket(basket.id));
+    if (basket) await loadBasket();
     refresh();
   }
 
@@ -219,7 +223,7 @@ export default function Page() {
                 </span>
               </div>
               <NavChart
-                points={history}
+                points={pricedAt ? [...history, { ts: pricedAt, nav: basket.nav }] : history}
                 mine={mine.flatMap((p) => (p.share_value === null ? [] : [{ ts: p.ts, nav: p.share_value }]))}
                 onHover={setHover}
               />
@@ -265,11 +269,6 @@ export default function Page() {
               >
                 {deleting ? "Deleting…" : "Delete basket"}
               </button>
-              {account?.mode === "paper" && (
-                <button type="button" className="text-btn" onClick={reset}>
-                  Reset paper account
-                </button>
-              )}
               {deleteError && (
                 <span className="auth-error" role="alert">
                   {deleteError}
