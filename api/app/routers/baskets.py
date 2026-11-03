@@ -4,7 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import delete, select, update
+from sqlalchemy.orm import object_session
 
+from app.arb_models import LockBasket, lock_for
 from app.auth import CurrentUser
 from app.db import SessionDep
 from app.models import Basket, BasketNav, BasketOrder, ConditionalOrder, Holding, Market, Stake, utcnow
@@ -20,8 +22,12 @@ router = APIRouter(prefix="/baskets", tags=["baskets"])
 
 
 def _basket_out(basket: Basket, valuation: svc.Valuation | None = None) -> BasketOut:
+    from app.routers.arbitrage import lock_out
+
     valuation = valuation or svc.value_basket(basket)
+    lock = lock_for(object_session(basket), basket.id)
     return BasketOut(
+        lock=lock_out(lock) if lock else None,
         id=basket.id,
         name=basket.name,
         description=basket.description,
@@ -146,11 +152,19 @@ def delete_basket(basket_id: int, session: SessionDep, user: CurrentUser):
     if session.scalar(select(Holding.id).where(Holding.basket_id == basket.id).limit(1)) is not None:
         raise HTTPException(409, "Sell this basket's holdings before deleting it")
     # The basket is in shared.db, so app.db's foreign keys can't clean up after it.
-    for model in (NewsConsumption, NewsCycle, NewsCash, NewsSignal, NewsPolicy, NewsAllocation, BasketNav, Stake, ConditionalOrder):
+    for model in (NewsConsumption, NewsCycle, NewsCash, NewsSignal, NewsPolicy, NewsAllocation, BasketNav, Stake, ConditionalOrder, LockBasket):
         session.execute(delete(model).where(model.basket_id == basket.id))
     session.execute(update(BasketOrder).where(BasketOrder.basket_id == basket.id).values(basket_id=None))
     session.delete(basket)
     session.commit()
+
+
+def _index_basket(session, user, basket_id: int) -> Basket:
+    """The user's basket, refusing a locked arbitrage: its legs are held to settlement, not reweighted."""
+    basket = owned_basket(session, user, basket_id)
+    if lock_for(session, basket.id):
+        raise HTTPException(409, "This basket is a locked arbitrage: it's held to settlement, not rebalanced")
+    return basket
 
 
 @router.get("/{basket_id}/rebalance", response_model=RebalancePlan)
@@ -161,7 +175,7 @@ def preview_rebalance(
     threshold: Annotated[float, Query(gt=0, le=1)] = svc.DEFAULT_DRIFT_THRESHOLD,
 ):
     """Trades that would restore target weights at the current NAV. Changes nothing."""
-    basket = owned_basket(session, user, basket_id)
+    basket = _index_basket(session, user, basket_id)
     try:
         valuation, trades = svc.plan_rebalance(basket)
     except svc.BasketError as e:
@@ -178,7 +192,7 @@ def preview_rebalance(
 @router.post("/{basket_id}/rebalance", response_model=RebalanceResult)
 def rebalance(basket_id: int, session: SessionDep, user: CurrentUser):
     """Reset every position to its target weight at the current NAV."""
-    basket = owned_basket(session, user, basket_id)
+    basket = _index_basket(session, user, basket_id)
     try:
         trades = svc.apply_rebalance(basket)
     except svc.BasketError as e:

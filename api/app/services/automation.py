@@ -16,6 +16,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.arb_models import lock_for
 from app.brokers import Broker
 from app.models import (
     AccountMode,
@@ -102,7 +103,8 @@ def run(session: Session, brokers: dict[AccountMode, Broker], now: datetime) -> 
     """Place every automated trade that's due. Returns how many basket orders were placed."""
     placed = 0
     for order in session.scalars(select(ConditionalOrder).where(ConditionalOrder.status == ConditionalStatus.OPEN)).all():
-        if news.blocks_automation(session, order.account_id, order.basket_id):
+        # Locked arbitrage baskets are held to settlement; trading them by weight would break the lock.
+        if news.blocks_automation(session, order.account_id, order.basket_id) or lock_for(session, order.basket_id):
             continue
         broker = brokers.get(order.account.mode)
         if broker and triggered(order.condition, order.nav, value_basket(order.basket).nav):
@@ -112,7 +114,7 @@ def run(session: Session, brokers: dict[AccountMode, Broker], now: datetime) -> 
         select(Stake).where(or_(Stake.recurring_amount_cents.is_not(None), Stake.auto_rebalance_drift.is_not(None)))
     ).all()
     for stake in stakes:
-        if news.blocks_automation(session, stake.account_id, stake.basket_id):
+        if news.blocks_automation(session, stake.account_id, stake.basket_id) or lock_for(session, stake.basket_id):
             continue
         broker = brokers.get(stake.account.mode)
         if broker is None:

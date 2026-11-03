@@ -90,6 +90,8 @@ class SyncCounts(BaseModel):
     settled: int
     # Basket orders placed by automations.
     automated: int
+    # Arbitrage opportunities the scan after the sync found.
+    opportunities: int = 0
 
 
 class PositionIn(BaseModel):
@@ -116,6 +118,29 @@ class PositionOut(BaseModel):
     value: float
 
 
+class LockOut(BaseModel):
+    """A basket that holds a locked arbitrage: one contract of every leg per set, held to settlement."""
+
+    basket_id: int
+    opportunity_id: str
+    # ladder | time | bracket_no | bracket_yes
+    kind: str
+    title: str
+    explanation: str
+    # What each set pays at least, whatever happens.
+    payout_per_set: float
+    # Totals over every lock placed into this basket: sets bought, what they cost with fees, and their floor.
+    sets: int
+    cost: float
+    payout: float
+    profit: float
+    closes_at: datetime | None
+    created_at: datetime
+    # For the signed-in account: "locked" while held, then "settled" or "closed". None outside an account.
+    status: str | None = None
+    held_sets: int | None = None
+
+
 class BasketOut(BaseModel):
     id: int
     name: str
@@ -127,6 +152,8 @@ class BasketOut(BaseModel):
     cash_weight: float = 0.0
     cash_target_weight: float = 0.0
     positions: list[PositionOut]
+    # Set when the basket is a locked arbitrage rather than an index.
+    lock: LockOut | None = None
 
 
 class TradeOut(BaseModel):
@@ -418,3 +445,143 @@ class ConditionalOrderOut(BaseModel):
     triggered_at: datetime | None
     basket_order_id: int | None
     note: str | None
+
+
+class ArbLegOut(BaseModel):
+    market_id: int
+    ticker: str
+    question: str
+    # The outcome the market names, when its question is shared with its siblings (e.g. "Above 3.75%").
+    outcome: str | None = None
+    url: str | None = None
+    side: Side
+    # Best ask when last priced, and the average over `sets` contracts walking the book.
+    best_price: float
+    avg_price: float | None = None
+    closes_at: datetime | None = None
+
+
+class OpportunityOut(BaseModel):
+    id: str
+    # ladder | time | bracket_no | bracket_yes | implication
+    kind: str
+    # False for implications: they rest on a model's reading of two questions.
+    guaranteed: bool
+    title: str
+    explanation: str
+    legs: list[ArbLegOut]
+    # One set is one contract of every leg; it pays at least this whatever happens.
+    payout_per_set: float
+    # Per set at the best prices, after fees.
+    edge_per_set: float
+    # The most profitable size against the live order books. None when depth is unknown.
+    sets: int | None
+    cost: float | None
+    payout: float | None
+    profit: float | None
+    # profit / cost, and that as a simple yearly rate until the last leg closes.
+    return_pct: float | None
+    annualized: float | None
+    closes_at: datetime | None
+    # Priced against live order books, so `sets` is backed by real depth.
+    confirmed: bool
+    active: bool
+    first_seen: datetime
+    last_seen: datetime
+    times_seen: int
+    best_profit: float
+    note: str | None
+
+
+class ScanOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    started_at: datetime
+    duration_ms: int
+    # Open markets with terms, groups checked, groups priced live, and opportunities found.
+    markets: int
+    groups: int
+    candidates: int
+    found: int
+    error: str | None
+
+
+class ArbSummaryOut(BaseModel):
+    scans: int
+    last_scan: ScanOut | None
+    # Distinct opportunities ever logged, how many are open now, and the profit open now (live-priced only).
+    opportunities_seen: int
+    active: int
+    profit_available: float
+    # Sum of each logged opportunity's best profit: what locking every one at its peak would have made.
+    best_profit_seen: float
+    # This user's locks: how many, what they cost, and the payout they're guaranteed.
+    locks: int
+    locked_cost: float
+    locked_payout: float
+    locked_profit: float
+
+
+class ArbitrageOut(BaseModel):
+    summary: ArbSummaryOut
+    # Guaranteed kinds, most profit first.
+    opportunities: list[OpportunityOut]
+    # Model-proposed pairs priced the wrong way, checked in the last day. Not guaranteed.
+    implications: list[OpportunityOut]
+
+
+class ScanIn(BaseModel):
+    # Sync markets from Kalshi first (about half a minute), so the scan screens fresh quotes.
+    sync: bool = False
+
+
+class ImplicationIn(BaseModel):
+    query: str = Field(min_length=3, max_length=300)
+
+
+class ImplicationOut(BaseModel):
+    if_market: MarketOut
+    then_market: MarketOut
+    # "definitional": if_market is a special case of then_market. "causal": very likely, not by definition.
+    relation: str
+    confidence: float
+    reason: str
+    # YES on then_market plus NO on if_market at the stored quotes, after fees, per set. Positive when
+    # the pair is priced as if the implication ran the other way.
+    edge_per_set: float | None
+    mispriced: bool
+    opportunity_id: str | None
+
+
+class ImplicationsOut(BaseModel):
+    query: str
+    candidates_considered: int
+    pairs: list[ImplicationOut]
+
+
+class LockIn(BaseModel):
+    # Contracts of every leg. Omit for the most profitable size the order books allow.
+    sets: int | None = Field(default=None, ge=1, le=100_000)
+    dry_run: bool = False
+
+
+class LockPreviewOut(BaseModel):
+    opportunity_id: str
+    sets: int
+    orders: list[PlannedOrderOut]
+    cost: float
+    payout: float
+    profit: float
+    fees: float
+    return_pct: float
+    annualized: float | None
+    cash_after: float
+
+
+class LockResultOut(BaseModel):
+    lock: LockOut
+    basket_order: BasketOrderOut
+    # Sets every leg filled; extra contracts on any leg were sold back.
+    filled_sets: int
+    note: str | None
+    account: AccountOut

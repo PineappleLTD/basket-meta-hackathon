@@ -15,6 +15,7 @@ const ORIGIN: Record<OrderOrigin, string | null> = {
   conditional: "Price trigger",
   settlement: "Market resolved",
   news: "News response · paper",
+  arbitrage: "Arbitrage lock",
 };
 
 // Cash an order moved: negative for a buy.

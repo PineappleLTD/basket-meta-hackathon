@@ -30,5 +30,7 @@ def test_sync_upserts_without_duplicating(client):
         "resolved": 0,
         "settled": 0,
         "automated": 0,
+        # The fixtures have no ladders, deadlines or brackets to scan.
+        "opportunities": 0,
     }
     assert client.get("/markets").json()["total"] == len(_FIXTURES)

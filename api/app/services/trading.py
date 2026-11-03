@@ -411,7 +411,19 @@ def spendable_cash(account: Account) -> int:
     return max(0, account.cash_cents - reserved_cash(session, account.id)) if session else account.cash_cents
 
 
+def _refuse_lock(basket: Basket, message: str) -> None:
+    """Locked arbitrage baskets hold one contract of every leg per set; trades by weight would break that."""
+    from app.arb_models import lock_for
+
+    if lock_for(object_session(basket), basket.id):
+        raise TradingError(message)
+
+
 def plan_buy(account: Account, basket: Basket, amount: float, broker: Broker) -> Plan:
+    _refuse_lock(
+        basket,
+        "This basket is a locked arbitrage. Add sets from the arbitrage scanner, so every leg gets the same number of contracts",
+    )
     budget = to_cents(amount, up=False)
     if budget > spendable_cash(account):
         raise TradingError(f"Not enough cash: ${spendable_cash(account) / 100:,.2f} available (basket cash is reserved)")
@@ -457,6 +469,8 @@ def _reasons(skipped: list[SkippedLeg]) -> str:
 
 def plan_sell(account: Account, basket: Basket, fraction: float, broker: Broker) -> Plan:
     """Sell `fraction` of every holding, rounded down."""
+    if fraction < 1:
+        _refuse_lock(basket, "Sell all of a locked arbitrage at once: selling part of it could leave its legs unmatched")
     holdings = list(_holdings(account, basket).values())
     from app.services.news import basket_cash
     session = object_session(account)
@@ -477,6 +491,7 @@ def _index_needs_reset(basket: Basket) -> bool:
 
 
 def plan_rebalance(account: Account, basket: Basket, broker: Broker) -> Plan:
+    _refuse_lock(basket, "This basket is a locked arbitrage: it's held to settlement, and rebalancing would trade its legs apart")
     held = _holdings(account, basket)
     if not held:
         raise TradingError("No holdings in this basket")

@@ -41,6 +41,12 @@ class ReviewIn(BaseModel):
     cycle_id: str = Field(min_length=1, max_length=64)
 
 
+def _not_locked(session, basket):
+    from app.arb_models import lock_for
+    if lock_for(session, basket.id):
+        raise HTTPException(409, "This basket is a locked arbitrage: it's held to settlement, so news shifts are off")
+
+
 def context(request, session, user, basket_id):
     basket = owned_basket(session, user, basket_id)
     account = trading.get_account(session, user, AccountMode.PAPER, request.app.state.settings.paper_starting_cash)
@@ -68,6 +74,8 @@ def get_settings(basket_id: int, session: SessionDep, user: CurrentUser):
 @router.put("/settings")
 def put_settings(basket_id: int, body: NewsSettingsIn, request: Request, session: SessionDep, user: CurrentUser):
     basket, account, broker = context(request, session, user, basket_id)
+    if body.mode != "off":
+        _not_locked(session, basket)
     item = news.policy(session, basket)
     for key, value in body.model_dump().items():
         setattr(item, key, value)
@@ -103,6 +111,7 @@ def post_article(basket_id: int, body: ArticleIn, request: Request, session: Ses
 
 def _advance(basket_id, request, session, user, expected_id=None):
     basket, account, broker = context(request, session, user, basket_id)
+    _not_locked(session, basket)
     cycle = None
     try:
         cycle = news.active_cycle(session, account.id, basket.id)

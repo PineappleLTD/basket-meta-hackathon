@@ -95,6 +95,9 @@ def status(request: Request, user: CurrentUser):
 def connect(body: ConnectIn, request: Request, session: SessionDep, user: CurrentUser):
     g = gateway(request, user)
     basket = owned_basket(session, user, body.basket_id)
+    from app.arb_models import lock_for
+    if lock_for(session, basket.id):
+        raise HTTPException(409, "Locked arbitrage baskets are paper-only for now")
     if session.scalar(select(Account.id).where(Account.user_id == user.id, Account.mode == AccountMode.LIVE)):
         raise HTTPException(409, "An exchange account is already connected; its baseline cannot be reset")
     owner_id, basket_id = user.id, basket.id
