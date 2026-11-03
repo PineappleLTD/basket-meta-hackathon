@@ -1,0 +1,14 @@
+{
+  "note": "Editable starting sources, not guaranteed exhaustive coverage. Publication times come from each feed. Add licensed specialist feeds for your actual holdings.",
+  "feeds": [
+    {"name": "Federal Reserve announcements", "url": "https://www.federalreserve.gov/feeds/press_all.xml"},
+    {"name": "BBC world", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
+    {"name": "BBC business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml"},
+    {"name": "BBC politics", "url": "https://feeds.bbci.co.uk/news/politics/rss.xml"},
+    {"name": "BBC technology", "url": "https://feeds.bbci.co.uk/news/technology/rss.xml"},
+    {"name": "BBC health", "url": "https://feeds.bbci.co.uk/news/health/rss.xml"},
+    {"name": "BBC science and environment", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
+    {"name": "BBC entertainment", "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml"},
+    {"name": "BBC sports", "url": "https://feeds.bbci.co.uk/sport/rss.xml"}
+  ]
+}
