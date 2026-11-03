@@ -110,6 +110,7 @@ def _basket_holdings_out(b: svc.BasketHoldings) -> BasketHoldingsOut:
         holding_return=_ratio(b.share_value, opened_nav),
         index_return=_ratio(b.nav, opened_nav) if b.share_value is not None else None,
         holdings=holdings,
+        cash=b.cash,
     )
 
 
@@ -118,6 +119,7 @@ def _account_out(account: Account, broker: Broker | None = None) -> AccountOut:
     return AccountOut(
         mode=account.mode,
         cash=account.cash,
+        available_cash=svc.spendable_cash(account) / 100,
         starting_cash=account.starting_cash,
         holdings_value=valuation.holdings_value,
         equity=valuation.equity,
@@ -157,7 +159,8 @@ def _preview(plan: svc.Plan, account: Account) -> TradePreview:
         fees=sum(o.fee for o in orders),
         price_impact=sum(o.price_impact for o in orders),
         cash_delta=plan.cash_delta_cents / 100,
-        cash_after=(account.cash_cents + plan.cash_delta_cents) / 100,
+        cash_after=(svc.spendable_cash(account) + plan.cash_delta_cents - plan.reserve_cash_cents) / 100,
+        basket_cash_delta=plan.reserve_cash_cents / 100,
     )
 
 
@@ -183,6 +186,9 @@ def _run(
     try:
         record = svc.execute(session, account, basket, plan, broker)
         session.commit()
+    except svc.TradingError as e:
+        session.rollback()
+        raise HTTPException(409, str(e)) from e
     except StaleDataError as e:
         # Another trade on this account committed after this one was planned.
         session.rollback()

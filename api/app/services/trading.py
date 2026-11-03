@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.brokers import Book, Broker, NoQuote, OrderRequest, Quote, gross_cents, to_cents, top_of_book
 from app.models import (
@@ -98,6 +98,8 @@ class Plan:
     skipped: list[SkippedLeg] = field(default_factory=list)
     # A rebalance also resets the basket's index to its targets, so later buys mirror the holdings.
     reset_index: bool = False
+    # Cash moved into/out of this ETF's cash leg, while remaining in account cash.
+    reserve_cash_cents: int = 0
 
     @property
     def cash_delta_cents(self) -> int:
@@ -124,6 +126,7 @@ class BasketHoldings:
     liquidation_value: float
     cost: float
     holdings: list[HoldingValuation]
+    cash: float = 0.0
 
     @property
     def share_value(self) -> float | None:
@@ -170,6 +173,9 @@ def reset_account(session: Session, account: Account, starting_cash: float) -> N
     """Drop every holding, stake, order and equity point, and restore the starting cash."""
     account.holdings.clear()
     account.stakes.clear()
+    from app.news_models import NewsCash, NewsConsumption, NewsCycle
+    for model in (NewsConsumption, NewsCycle, NewsCash):
+        session.execute(delete(model).where(model.account_id == account.id))
     session.execute(delete(ConditionalOrder).where(ConditionalOrder.account_id == account.id))
     session.execute(delete(BasketOrder).where(BasketOrder.account_id == account.id))
     session.execute(delete(AccountValue).where(AccountValue.account_id == account.id))
@@ -182,7 +188,7 @@ def get_stake(account: Account, basket: Basket) -> Stake:
     for stake in account.stakes:
         if stake.basket_id == basket.id:
             return stake
-    stake = Stake(basket=basket, basket_id=basket.id, shares=0.0)
+    stake = Stake(basket=basket, basket_id=basket.id, shares=0.0, realized_pnl_cents=0)
     account.stakes.append(stake)
     return stake
 
@@ -218,7 +224,11 @@ def target_weights(basket: Basket, held: dict[LegKey, Holding]) -> dict[LegKey, 
     the rest by the basket's rescaled targets, and open legs the basket dropped go to 0.
     """
     values = {key: _mark(h) for key, h in held.items()}
-    total = sum(values.values())
+    from app.services.news import basket_cash
+    session = object_session(basket)
+    account_id = next(iter(held.values())).account_id if held else None
+    cash = basket_cash(session, account_id, basket.id) / 100 if session and account_id else 0.0
+    total = sum(values.values()) + cash
     if total <= 0:
         return {key: 0.0 for key in held}
     try:
@@ -233,9 +243,11 @@ def target_weights(basket: Basket, held: dict[LegKey, Holding]) -> dict[LegKey, 
         if not h.market.is_open:
             targets[key] = values[key] / total
             frozen += targets[key]
+    cash_target = value_basket(basket).cash_target_weight
+    scale = max(0, 1 - frozen - cash_target) / (1 - cash_target) if cash_target < 1 else 0.0
     for p in basket.positions:
         if p.id in weights:
-            targets[(p.market_id, p.side)] = weights[p.id] * (1 - frozen)
+            targets[(p.market_id, p.side)] = weights[p.id] * scale
     return targets
 
 
@@ -243,7 +255,10 @@ def value_basket_holdings(account: Account, basket: Basket, broker: Broker | Non
     held = _holdings(account, basket)
     targets = target_weights(basket, held)
     marks = {key: _mark(h) for key, h in held.items()}
-    value = sum(marks.values())
+    from app.services.news import basket_cash
+    session = object_session(account)
+    cash = basket_cash(session, account.id, basket.id) / 100 if session else 0.0
+    value = sum(marks.values()) + cash
     holdings = [
         HoldingValuation(
             holding=h,
@@ -260,22 +275,28 @@ def value_basket_holdings(account: Account, basket: Basket, broker: Broker | Non
         stake=find_stake(account, basket.id),
         nav=value_basket(basket).nav,
         value=value,
-        liquidation_value=sum(h.liquidation_value for h in holdings),
-        cost=sum(h.cost for h in held.values()),
+        liquidation_value=sum(h.liquidation_value for h in holdings) + cash,
+        cost=sum(h.cost for h in held.values()) + cash,
         holdings=holdings,
+        cash=cash,
     )
 
 
 def value_account(account: Account, broker: Broker | None = None) -> AccountValuation:
     """Holdings by basket, largest first. Without a broker, liquidation value ignores fees."""
     baskets_by_id = {h.basket_id: h.basket for h in account.holdings}
+    from app.news_models import NewsCash
+    session = object_session(account)
+    if session:
+        for basket_id in session.scalars(select(NewsCash.basket_id).where(NewsCash.account_id == account.id, NewsCash.cents > 0)):
+            baskets_by_id[basket_id] = session.get(Basket, basket_id)
     baskets = sorted(
         (value_basket_holdings(account, b, broker) for b in baskets_by_id.values()), key=lambda b: b.value, reverse=True
     )
     return AccountValuation(
         account,
-        holdings_value=sum(b.value for b in baskets),
-        liquidation_value=sum(b.liquidation_value for b in baskets),
+        holdings_value=sum(b.value - b.cash for b in baskets),
+        liquidation_value=sum(b.liquidation_value - b.cash for b in baskets),
         baskets=baskets,
     )
 
@@ -384,23 +405,31 @@ def _split(
     return tradeable, skipped
 
 
+def spendable_cash(account: Account) -> int:
+    from app.services.news import reserved_cash
+    session = object_session(account)
+    return max(0, account.cash_cents - reserved_cash(session, account.id)) if session else account.cash_cents
+
+
 def plan_buy(account: Account, basket: Basket, amount: float, broker: Broker) -> Plan:
     budget = to_cents(amount, up=False)
-    if budget > account.cash_cents:
-        raise TradingError(f"Not enough cash: ${account.cash:,.2f} available")
-    weights = {
-        (pv.position.market_id, pv.position.side): pv.current_weight for pv in value_basket(basket).positions
-    }
-    legs = [(p.market, p.side) for p in basket.positions]
+    if budget > spendable_cash(account):
+        raise TradingError(f"Not enough cash: ${spendable_cash(account) / 100:,.2f} available (basket cash is reserved)")
+    valuation = value_basket(basket)
+    reserve = math.floor(budget * valuation.cash_weight + 1e-9)
+    weights = {(pv.position.market_id, pv.position.side): pv.current_weight for pv in valuation.positions}
+    legs = [(p.market, p.side) for p in basket.positions if weights[(p.market_id, p.side)] > 0]
     tradeable, skipped = _split(legs, broker.books([(m, side, Action.BUY) for m, side in legs]))
     if not tradeable:
+        if reserve == budget:
+            return Plan(BasketOrderKind.BUY, amount, [], skipped, reserve_cash_cents=reserve)
         raise TradingError(f"Nothing can be bought: {_reasons(skipped)}")
 
     buy_legs = [_BuyLeg(m, side, book, math.floor(budget * weights[(m.id, side)])) for m, side, book in tradeable]
-    orders, more = _allocate(broker, buy_legs, budget)
+    orders, more = _allocate(broker, buy_legs, budget - reserve)
     if not orders:
         raise TradingError("Amount is too small to buy a contract of any position")
-    return Plan(BasketOrderKind.BUY, amount, orders, skipped + more)
+    return Plan(BasketOrderKind.BUY, amount, orders, skipped + more, reserve_cash_cents=reserve)
 
 
 def _sell_orders(
@@ -429,13 +458,17 @@ def _reasons(skipped: list[SkippedLeg]) -> str:
 def plan_sell(account: Account, basket: Basket, fraction: float, broker: Broker) -> Plan:
     """Sell `fraction` of every holding, rounded down."""
     holdings = list(_holdings(account, basket).values())
-    if not holdings:
+    from app.services.news import basket_cash
+    session = object_session(account)
+    cash = basket_cash(session, account.id, basket.id) if session else 0
+    released = cash if fraction >= 1 else math.floor(cash * fraction)
+    if not holdings and not released:
         raise TradingError("No holdings in this basket")
     sells = [(h, h.contracts if fraction >= 1 else math.floor(h.contracts * fraction)) for h in holdings]
     orders, skipped = _sell_orders(broker, [(h, n) for h, n in sells if n > 0])
-    if not orders:
+    if not orders and not released:
         raise TradingError(f"Nothing to sell: {_reasons(skipped) or 'every holding rounds down to 0 contracts'}")
-    return Plan(BasketOrderKind.SELL, fraction, orders, skipped)
+    return Plan(BasketOrderKind.SELL, fraction, orders, skipped, reserve_cash_cents=-released)
 
 
 def _index_needs_reset(basket: Basket) -> bool:
@@ -453,7 +486,9 @@ def plan_rebalance(account: Account, basket: Basket, broker: Broker) -> Plan:
         raise TradingError(str(e)) from e
 
     targets = target_weights(basket, held)
-    value = sum(_mark(h) for h in held.values())
+    holdings = value_basket_holdings(account, basket)
+    value = holdings.value
+    reserve_change = round(value * value_basket(basket).cash_target_weight * 100) - round(holdings.cash * 100)
     markets = {p.market_id: p.market for p in basket.positions} | {h.market_id: h.market for h in held.values()}
 
     sells, buys = [], []
@@ -489,7 +524,7 @@ def plan_rebalance(account: Account, basket: Basket, broker: Broker) -> Plan:
             leg.target = leg.cost(broker, count) or 0
             legs.append(leg)
         # Funded by the sells first; account cash covers what spreads and fees take off them.
-        bought, more = _allocate(broker, legs, proceeds + account.cash_cents)
+        bought, more = _allocate(broker, legs, max(0, proceeds + spendable_cash(account) - reserve_change))
         orders += bought
         skipped += no_quote + [s for s in more if "buys no contracts" not in s.reason]
 
@@ -498,7 +533,7 @@ def plan_rebalance(account: Account, basket: Basket, broker: Broker) -> Plan:
         if skipped:
             raise TradingError(f"Nothing can be rebalanced: {_reasons(skipped)}")
         raise TradingError("Holdings are already at target weights")
-    return Plan(BasketOrderKind.REBALANCE, None, orders, skipped, reset_index=True)
+    return Plan(BasketOrderKind.REBALANCE, None, orders, skipped, reset_index=True, reserve_cash_cents=reserve_change)
 
 
 def needs_rebalance(account: Account, basket: Basket, threshold: float = DEFAULT_DRIFT_THRESHOLD) -> bool:
@@ -568,10 +603,11 @@ def _settle_up(
     orders: list[Order],
     now: datetime,
     reset_index: bool = False,
+    basket_cash_delta_cents: int = 0,
 ) -> None:
     """Book filled orders, issue or redeem shares for the cash that moved, and snapshot."""
     stake = get_stake(account, basket)
-    before = value_basket_holdings(account, basket).value
+    before = value_basket_holdings(account, basket).value - basket_cash_delta_cents / 100
     nav = value_basket(basket).nav
     held = _holdings(account, basket)
     flow = 0
@@ -579,9 +615,13 @@ def _settle_up(
         record.orders.append(order)
         if order.filled_count:
             flow += _book(account, basket, held, stake, order)
+    flow += basket_cash_delta_cents
+    if basket_cash_delta_cents:
+        from app.models import NewsCashMovement
+        record.cash_movement = NewsCashMovement(delta_cents=basket_cash_delta_cents)
     if reset_index:
         apply_rebalance(basket)
-    if held:
+    if held or value_basket_holdings(account, basket).cash > 0:
         _issue_shares(stake, before, flow / 100, nav, now)
     else:
         stake.shares, stake.opened_nav, stake.opened_at = 0.0, None, None
@@ -599,6 +639,11 @@ def execute(
     origin: OrderOrigin = OrderOrigin.MANUAL,
 ) -> BasketOrder:
     """Send the plan's orders in order, and book each fill to cash, holdings and shares."""
+    from app.services.news import active_cycle, reserved_cash
+    from app.services.news_execution import lock_account, _validate_fill
+    lock_account(session, account)
+    if active_cycle(session, account.id, basket.id):
+        raise TradingError("A news rebalance is still pending for this basket")
     record = BasketOrder(
         account_id=account.id,
         basket_id=basket.id,
@@ -608,9 +653,21 @@ def execute(
         amount=plan.amount,
     )
     orders = []
+    projected_cash = account.cash_cents
+    all_sales_filled = True
     for planned in plan.orders:
         request = planned.request
+        if request.action == Action.BUY and not all_sales_filled:
+            continue
         fill = broker.execute(request)
+        _validate_fill(fill, request)
+        if request.action == Action.SELL:
+            all_sales_filled = all_sales_filled and fill.count == request.count
+            projected_cash += fill.gross_cents - fill.fee_cents
+        else:
+            projected_cash -= fill.gross_cents + fill.fee_cents
+        if projected_cash < reserved_cash(session, account.id) + min(0, plan.reserve_cash_cents):
+            raise TradingError("Confirmed fills would spend reserved cash")
         order = Order(
             market=request.market,
             side=request.side,
@@ -624,13 +681,26 @@ def execute(
             realized_pnl_cents=None,
         )
         orders.append(order)
-    _settle_up(session, account, basket, record, orders, utcnow(), reset_index=plan.reset_index)
+    if plan.reserve_cash_cents:
+        if projected_cash < reserved_cash(session, account.id) + plan.reserve_cash_cents:
+            raise TradingError("Confirmed fills cannot fund the ETF's cash target")
+        from app.news_models import NewsCash
+        bucket = session.scalar(select(NewsCash).where(NewsCash.account_id == account.id, NewsCash.basket_id == basket.id))
+        if bucket is None:
+            bucket = NewsCash(account_id=account.id, basket_id=basket.id, cents=0)
+            session.add(bucket)
+        if bucket.cents + plan.reserve_cash_cents < 0:
+            raise TradingError("Basket cash changed; refresh the plan")
+        bucket.cents += plan.reserve_cash_cents
+    _settle_up(session, account, basket, record, orders, utcnow(), reset_index=plan.reset_index,
+               basket_cash_delta_cents=plan.reserve_cash_cents)
     return record
 
 
 def settle(session: Session, now: datetime) -> int:
     """Pay out holdings in resolved markets to cash, one payout order per account and basket. No fees."""
-    held = session.scalars(select(Holding).join(Market).where(Market.settlement_price.is_not(None))).all()
+    held = session.scalars(select(Holding).join(Market).join(Account).where(
+        Market.settlement_price.is_not(None), Account.mode == AccountMode.PAPER)).all()
     groups: dict[tuple[int, int], list[Holding]] = defaultdict(list)
     for h in held:
         groups[(h.account_id, h.basket_id)].append(h)

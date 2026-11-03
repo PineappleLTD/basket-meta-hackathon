@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.services.baskets import value_basket
 from app.services.trading import TradingError, execute, needs_rebalance, plan_buy, plan_rebalance, plan_sell
+from app.services import news, news_execution
 
 log = logging.getLogger(__name__)
 
@@ -101,6 +102,8 @@ def run(session: Session, brokers: dict[AccountMode, Broker], now: datetime) -> 
     """Place every automated trade that's due. Returns how many basket orders were placed."""
     placed = 0
     for order in session.scalars(select(ConditionalOrder).where(ConditionalOrder.status == ConditionalStatus.OPEN)).all():
+        if news.blocks_automation(session, order.account_id, order.basket_id):
+            continue
         broker = brokers.get(order.account.mode)
         if broker and triggered(order.condition, order.nav, value_basket(order.basket).nav):
             placed += _fire(session, order, broker, now)
@@ -109,6 +112,8 @@ def run(session: Session, brokers: dict[AccountMode, Broker], now: datetime) -> 
         select(Stake).where(or_(Stake.recurring_amount_cents.is_not(None), Stake.auto_rebalance_drift.is_not(None)))
     ).all()
     for stake in stakes:
+        if news.blocks_automation(session, stake.account_id, stake.basket_id):
+            continue
         broker = brokers.get(stake.account.mode)
         if broker is None:
             continue
@@ -116,4 +121,5 @@ def run(session: Session, brokers: dict[AccountMode, Broker], now: datetime) -> 
             placed += _recur(session, stake, broker, now)
         if stake.auto_rebalance_drift and needs_rebalance(stake.account, stake.basket, stake.auto_rebalance_drift):
             placed += _rebalance(session, stake, broker, now)
+    placed += news_execution.run(session, brokers, now)
     return placed

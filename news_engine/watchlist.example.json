@@ -1,0 +1,8 @@
+{
+  "note": "Illustrative topic monitoring only. Use your real portfolio JSON for exact held contracts and deadlines. Topics may use any category on either platform.",
+  "topics": [
+    {"id": "fed-policy", "category": "Economics", "query": "(\"Federal Reserve\" OR \"FOMC\") AND (rates OR inflation)", "alias_groups": [["Federal Reserve", "FOMC"], ["rates", "inflation"]]},
+    {"id": "bitcoin-etfs", "category": "Crypto", "query": "bitcoin AND ETF", "alias_groups": [["bitcoin"], ["ETF", "ETFs", "exchange traded"]]},
+    {"id": "starship", "category": "Science and Technology", "query": "SpaceX AND Starship", "alias_groups": [["SpaceX"], ["Starship"]]}
+  ]
+}

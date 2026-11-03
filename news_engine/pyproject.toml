@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slicefund-headline-engine"
+version = "0.2.0"
+description = "Muse news discovery, evidence extraction and held-position Ridge regression"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2,<3", "pandas>=2.2,<4", "scikit-learn>=1.5,<2", "joblib>=1.4,<2", "langchain>=1.3.2,<2", "langchain-openai>=1.4,<2", "defusedxml>=0.7,<1"]
+
+[tool.setuptools]
+packages = ["headline_model", "news_agent"]

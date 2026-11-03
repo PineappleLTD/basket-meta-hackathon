@@ -4,6 +4,7 @@ sqlalchemy>=2.0.36
 psycopg[binary]>=3.2
 pydantic-settings>=2.6
 httpx>=0.28
+cryptography>=45,<49
 numpy>=2.1
 
 # dev

@@ -1,0 +1,6 @@
+{
+  "artifact": "models/ridge-v3-full.joblib",
+  "sha256": "f38a7254b096a78d6cfa08b8ee7628836f6f9ab5e7406b7bc07b20406baa9c26",
+  "experimental": true,
+  "phase": "full"
+}

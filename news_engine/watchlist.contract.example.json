@@ -1,0 +1,20 @@
+{
+  "note": "Hypothetical schema example only. Replace the market identifier, question, rules, deadline and held side with the actual contract you own before live monitoring.",
+  "topics": [
+    {
+      "id": "example-fed-yes",
+      "category": "Economics",
+      "query": "\"Federal Reserve\" AND (rates OR FOMC)",
+      "alias_groups": [["Federal Reserve", "FOMC"], ["rates", "rate", "interest"]],
+      "contract": {
+        "platform": "kalshi",
+        "market_id": "REPLACE-WITH-ACTUAL-MARKET-ID",
+        "outcome": "YES",
+        "question": "Will the Federal Reserve cut its target interest rate before January 1, 2027?",
+        "thesis": "A target interest rate reduction occurs within the contract window.",
+        "resolution_rules": "EXAMPLE ONLY: resolves YES if the Federal Reserve officially lowers its target federal funds rate before January 1, 2027. Replace with complete exchange rules.",
+        "deadline": "2027-01-01T00:00:00Z"
+      }
+    }
+  ]
+}

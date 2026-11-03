@@ -10,6 +10,7 @@ from app.brokers import Broker
 from app.kalshi import MarketSource
 from app.models import Account, AccountMode, Basket, BasketNav, BasketPosition, Holding, Market, MarketPrice, utcnow
 from app.services import automation
+from app.news_models import NewsContract
 from app.services.baskets import value_basket
 from app.services.trading import settle, snapshot
 
@@ -36,13 +37,16 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int, now
     new = []
     updates = []
     for data in fetched:
+        listing = vars(data).copy()
+        listing.pop("resolution_rules", None)
+        listing.pop("resolution_deadline", None)
         market = existing.get(data.external_id)
         if market is None:
-            market = Market(**vars(data), quoted_at=now)
+            market = Market(**listing, quoted_at=now)
             session.add(market)
             new.append(market)
         else:
-            updates.append((market, {**vars(data), "quoted_at": now, "updated_at": now}))
+            updates.append((market, {**listing, "quoted_at": now, "updated_at": now}))
     _update_markets(session, updates)
 
     seen = {d.external_id for d in fetched}
@@ -52,6 +56,16 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int, now
     session.flush()  # assigns ids to new markets
 
     by_ticker = {m.external_id: m for m in [*existing.values(), *new]}
+    # Store exact exchange rules separately; existing market schemas need no alteration.
+    contracts = {c.market_id: c for c in session.scalars(select(NewsContract))}
+    for data in fetched:
+        if data.resolution_rules and data.resolution_deadline:
+            market = by_ticker[data.external_id]
+            contract = contracts.get(market.id)
+            if contract is None:
+                contract = NewsContract(market_id=market.id)
+                session.add(contract)
+            contract.rules, contract.deadline, contract.updated_at = data.resolution_rules, data.resolution_deadline, now
     rows = [{"market_id": by_ticker[d.external_id].id, "ts": now, "yes_price": d.yes_price} for d in fetched]
     if rows:
         session.execute(insert(MarketPrice), rows)
