@@ -32,6 +32,12 @@ def use_llm(app, client):
     return install
 
 
+@pytest.fixture
+def no_sync(monkeypatch):
+    """Keeps prices a test set by hand, which the sync before a thesis would overwrite."""
+    monkeypatch.setattr("app.routers.theses.sync_fresh", lambda state: None)
+
+
 def _ids_by_ticker(session):
     return {m.external_id: m.id for m in session.query(Market)}
 
@@ -116,7 +122,7 @@ def test_select_errors(client, use_llm):
     assert client.post("/theses/select", json={"thesis": "Rates fall"}).status_code == 502
 
 
-def test_select_skips_near_certain_markets(client, session, use_llm):
+def test_select_skips_near_certain_markets(client, session, use_llm, no_sync):
     market = session.query(Market).filter_by(external_id="MOCK-FEDCUT-26DEC").one()
     market.yes_price = 0.995
     session.commit()
@@ -135,25 +141,13 @@ def _select(client, use_llm):
     return client.post("/theses/select", json={"thesis": "Rates fall"})
 
 
-def test_select_syncs_first_when_markets_are_stale(app, client, session, use_llm):
+def test_select_syncs_first_every_time(client, session, use_llm):
     before = _price_points(session)
-    _select(client, use_llm)
-    assert _price_points(session) == before  # the startup sync is fresh
-
-    app.state.synced_at -= 16 * 60
     _select(client, use_llm)
     after = _price_points(session)
     assert after > before
     _select(client, use_llm)
-    assert _price_points(session) == after
-
-
-def test_select_sync_can_be_turned_off(app, client, session, use_llm):
-    app.state.settings.sync_max_age_minutes = 0
-    app.state.synced_at = None
-    before = _price_points(session)
-    _select(client, use_llm)
-    assert _price_points(session) == before
+    assert _price_points(session) > after
 
 
 def test_select_carries_on_when_the_sync_fails(app, client, use_llm, monkeypatch):
@@ -195,7 +189,7 @@ def test_meta_llama_client_sends_schema_and_parses_reply():
         failing.complete_json("s", "u", {})
 
 
-def test_illiquid_sides_are_not_offered_or_kept(client, session, use_llm):
+def test_illiquid_sides_are_not_offered_or_kept(client, session, use_llm, no_sync):
     markets = {m.external_id: m for m in session.query(Market)}
     agi, oai, fed = markets["MOCK-AGI-30"], markets["MOCK-OAIFRONTIER-27"], markets["MOCK-FEDCUT-26DEC"]
     # A 20c spread on a 14c YES is unusable, but the same spread on the 86c NO is tolerable.

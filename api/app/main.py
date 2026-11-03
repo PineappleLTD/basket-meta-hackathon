@@ -80,8 +80,6 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
             else:
                 threading.Thread(target=_seed, args=(app,), daemon=True).start()
         stop = threading.Event()
-        if settings.sync_interval_minutes > 0:
-            threading.Thread(target=_schedule, args=(app, stop), daemon=True).start()
         if settings.live_refresh_seconds > 0:
             threading.Thread(target=_live, args=(app, stop), daemon=True).start()
         yield
@@ -119,19 +117,6 @@ def _seed(app: FastAPI) -> None:
             log.info("Seeded markets: %s", sync_now(app.state))
         except Exception:
             log.exception("Seeding markets failed; call POST /markets/sync to retry")
-
-
-def _schedule(app: FastAPI, stop: threading.Event) -> None:
-    """Sync every sync_interval_minutes until `stop`, skipping a turn while another sync runs."""
-    while not stop.wait(app.state.settings.sync_interval_minutes * 60):
-        if not app.state.sync_lock.acquire(blocking=False):
-            continue
-        try:
-            log.info("Scheduled sync: %s", sync_now(app.state))
-        except Exception:
-            log.exception("Scheduled sync failed; trying again next interval")
-        finally:
-            app.state.sync_lock.release()
 
 
 def _live(app: FastAPI, stop: threading.Event) -> None:

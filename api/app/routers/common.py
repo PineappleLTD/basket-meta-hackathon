@@ -40,7 +40,7 @@ def history(session: Session, owner: InstrumentedAttribute, owner_id: int, since
 
 
 def sync_now(state) -> dict[str, int]:
-    """Sync and run automations, noting when for sync_if_stale. The caller holds state.sync_lock."""
+    """Sync and run automations, noting when for sync_fresh. The caller holds state.sync_lock."""
     started = time.monotonic()
     with state.sessionmaker() as session:
         counts = refresh(session, state.market_source, state.brokers, state.settings.backfill_days)
@@ -48,21 +48,15 @@ def sync_now(state) -> dict[str, int]:
     return counts
 
 
-def sync_if_stale(state) -> None:
-    """Sync when no sync has finished in the last sync_max_age_minutes (or since startup).
-    Waits out a sync already running, then checks again, so callers arriving together sync once.
-    A failed sync is logged and the caller carries on with the markets already stored."""
-    max_age = state.settings.sync_max_age_minutes * 60
-
-    def stale() -> bool:
-        return state.synced_at is None or time.monotonic() - state.synced_at > max_age
-
-    if max_age <= 0 or not stale():
-        return
+def sync_fresh(state) -> None:
+    """Sync unless one has started since this call did. Waits out a sync already running, then
+    syncs again, so callers arriving together sync once and none sees markets from before it
+    arrived. A failed sync is logged and the caller carries on with the markets already stored."""
+    arrived = time.monotonic()
     with state.sync_lock:
-        if not stale():
+        if state.synced_at is not None and state.synced_at >= arrived:
             return
         try:
-            log.info("Synced stale markets: %s", sync_now(state))
+            log.info("Synced markets: %s", sync_now(state))
         except Exception:
-            log.warning("Couldn't sync stale markets; using the last sync's", exc_info=True)
+            log.warning("Couldn't sync markets; using the last sync's", exc_info=True)
