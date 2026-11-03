@@ -6,3 +6,6 @@ api/data/*
 *.db
 .DS_Store
 slicefund/
+.env
+.env.*
+!.env.example
