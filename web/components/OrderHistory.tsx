@@ -14,6 +14,7 @@ const ORIGIN: Record<OrderOrigin, string | null> = {
   auto_rebalance: "Automatic",
   conditional: "Price trigger",
   settlement: "Market resolved",
+  news: "News response · paper",
 };
 
 // Cash an order moved: negative for a buy.
@@ -25,7 +26,7 @@ export function OrderHistory({ orders, question }: { orders: BasketOrder[]; ques
   return (
     <ul className="hist">
       {orders.map((bo) => {
-        const net = bo.orders.reduce((s, o) => s + cash(o), 0);
+        const net = bo.orders.reduce((s, o) => s + cash(o), 0) - bo.basket_cash_delta;
         const realized = bo.orders.reduce((s, o) => s + (o.realized_pnl ?? 0), 0);
         const hasRealized = bo.orders.some((o) => o.realized_pnl !== null);
         const unfilled = bo.orders.filter((o) => o.filled_count < o.count).length;

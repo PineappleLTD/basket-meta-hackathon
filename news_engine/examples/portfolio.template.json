@@ -1,0 +1,25 @@
+{
+  "basket_id": "REPLACE_WITH_BASKET_ID",
+  "as_of": "REPLACE_WITH_FRESH_ISO_8601_TIMESTAMP_WITH_TIMEZONE",
+  "nav": "REPLACE_WITH_TOTAL_BASKET_VALUE_INCLUDING_CASH",
+  "positions": [
+    {
+      "id": "REPLACE_WITH_HELD_POSITION_ID",
+      "platform": "kalshi",
+      "market_id": "REPLACE_WITH_MARKET_ID",
+      "outcome": "YES",
+      "question": "REPLACE_WITH_EXACT_MARKET_QUESTION",
+      "thesis": "REPLACE_WITH_THESIS_FOR_THE_HELD_SIDE",
+      "resolution_rules": "REPLACE_WITH_ACTUAL_CONTRACT_RESOLUTION_RULES",
+      "deadline": "REPLACE_WITH_RESOLUTION_DEADLINE_WITH_TIMEZONE",
+      "relevance_groups": [["REPLACE_WITH_ENTITY_ALIASES"], ["REPLACE_WITH_EVENT_ALIASES"]],
+      "quantity": "REPLACE_WITH_HELD_QUANTITY",
+      "mark_price": "REPLACE_WITH_PRICE_BETWEEN_ZERO_AND_ONE",
+      "min_order_size": "REPLACE_WITH_EXCHANGE_MINIMUM",
+      "quantity_step": "REPLACE_WITH_EXCHANGE_QUANTITY_INCREMENT",
+      "allow_partial": true,
+      "tradable": true,
+      "has_open_orders": false
+    }
+  ]
+}

@@ -60,6 +60,7 @@ def init_db(engine: Engine) -> None:
     security on every table: Supabase's Data API exposes tables to its anon key, and RLS
     with no policies shuts that out while the API (connecting as the tables' owner) still
     has full access."""
+    from app import news_models  # register additive feature tables for CLI entry points too
     if engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             conn.execute(text("CREATE SCHEMA IF NOT EXISTS shared"))

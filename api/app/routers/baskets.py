@@ -29,6 +29,8 @@ def _basket_out(basket: Basket, valuation: svc.Valuation | None = None) -> Baske
         rebalanced_at=basket.rebalanced_at,
         nav=valuation.nav,
         max_drift=valuation.max_drift,
+        cash_weight=valuation.cash_weight,
+        cash_target_weight=valuation.cash_target_weight,
         positions=[
             PositionOut(
                 market=MarketOut.model_validate(pv.position.market),
@@ -135,10 +137,16 @@ def get_nav_history(
 @router.delete("/{basket_id}", status_code=204)
 def delete_basket(basket_id: int, session: SessionDep, user: CurrentUser):
     basket = owned_basket(session, user, basket_id)
+    from app.news_models import NewsAllocation, NewsCash, NewsConsumption, NewsCycle, NewsPolicy, NewsSignal
+    from app.news_models import LiveControl
+    if session.scalar(select(LiveControl.account_id).where(LiveControl.basket_id == basket.id).limit(1)):
+        raise HTTPException(409, "A connected exchange ETF must retain its execution history")
+    if session.scalar(select(NewsCash.id).where(NewsCash.basket_id == basket.id, NewsCash.cents > 0).limit(1)):
+        raise HTTPException(409, "Sell or withdraw this basket's reserved cash before deleting it")
     if session.scalar(select(Holding.id).where(Holding.basket_id == basket.id).limit(1)) is not None:
         raise HTTPException(409, "Sell this basket's holdings before deleting it")
     # The basket is in shared.db, so app.db's foreign keys can't clean up after it.
-    for model in (BasketNav, Stake, ConditionalOrder):
+    for model in (NewsConsumption, NewsCycle, NewsCash, NewsSignal, NewsPolicy, NewsAllocation, BasketNav, Stake, ConditionalOrder):
         session.execute(delete(model).where(model.basket_id == basket.id))
     session.execute(update(BasketOrder).where(BasketOrder.basket_id == basket.id).values(basket_id=None))
     session.delete(basket)

@@ -22,6 +22,8 @@ class MarketData:
     event_ticker: str | None = None
     yes_bid: float | None = None
     yes_ask: float | None = None
+    resolution_rules: str | None = None
+    resolution_deadline: datetime | None = None
 
 
 @dataclass(frozen=True)

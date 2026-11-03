@@ -52,6 +52,7 @@ class OrderOrigin(StrEnum):
     AUTO_REBALANCE = "auto_rebalance"
     CONDITIONAL = "conditional"
     SETTLEMENT = "settlement"
+    NEWS = "news"
 
 
 class TriggerCondition(StrEnum):
@@ -364,6 +365,21 @@ class BasketOrder(Base):
     orders: Mapped[list["Order"]] = relationship(
         back_populates="basket_order", cascade="all, delete-orphan", lazy="selectin", order_by="Order.id"
     )
+    cash_movement: Mapped["NewsCashMovement | None"] = relationship(
+        back_populates="basket_order", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def basket_cash_delta(self) -> float:
+        return self.cash_movement.delta_cents / 100 if self.cash_movement else 0.0
+
+
+class NewsCashMovement(Base):
+    """Cash assigned to or withdrawn from an ETF by a recorded basket operation."""
+    __tablename__ = "news_cash_movements"
+    basket_order_id: Mapped[int] = mapped_column(ForeignKey("basket_orders.id", ondelete="CASCADE"), primary_key=True)
+    delta_cents: Mapped[int]
+    basket_order: Mapped[BasketOrder] = relationship(back_populates="cash_movement")
 
 
 class Order(Base):
