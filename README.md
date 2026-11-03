@@ -8,3 +8,14 @@ exchange reconciliation. Install the combined Python dependencies from this
 repository root with `python -m pip install -r requirements-news.txt`. External
 execution stays disabled until explicitly configured; the feature includes an
 offline paper/mocked validation path.
+
+## Arbitrage Scanner
+
+Finds mispriced Kalshi markets. Open it from **Arbitrage scanner** in the sidebar.
+
+- **Strike ladders:** a higher threshold priced above a lower one (e.g., BTC $150k vs $120k).
+- **Deadline pairs:** "by June" priced above "by December".
+- **Brackets:** YES or NO prices across all ranges that sum to under $1.
+- **Cross-event pairs:** contradictions between related events (e.g., recession vs. Fed cuts). The model suggests these, so they aren't guaranteed.
+
+**Lock baskets** hold a matched opportunity on paper until settlement, with rebalancing and partial sells disabled.
