@@ -35,11 +35,13 @@ export interface BasketHoldings {
   holding_return: number | null;
   index_return: number | null;
   holdings: Holding[];
+  cash: number;
 }
 
 export interface Account {
   mode: AccountMode;
   cash: number;
+  available_cash: number;
   starting_cash: number;
   equity: number;
   liquidation_equity: number;
@@ -78,6 +80,7 @@ export interface TradePreview {
   price_impact: number;
   cash_delta: number;
   cash_after: number;
+  basket_cash_delta: number;
 }
 
 export interface TradeResult {
@@ -85,7 +88,7 @@ export interface TradeResult {
   account: Account;
 }
 
-export type OrderOrigin = "manual" | "recurring" | "auto_rebalance" | "conditional" | "settlement";
+export type OrderOrigin = "manual" | "recurring" | "auto_rebalance" | "conditional" | "settlement" | "news";
 
 export interface Order {
   id: number;
@@ -104,6 +107,7 @@ export interface BasketOrder {
   id: number;
   kind: TradeKind;
   origin: OrderOrigin;
+  basket_cash_delta: number;
   // Dollars for a buy, share of holdings for a sell.
   amount: number | null;
   created_at: string;

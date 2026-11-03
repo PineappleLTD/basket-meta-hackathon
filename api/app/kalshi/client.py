@@ -110,6 +110,9 @@ class KalshiClient:
                     event_ticker=m["event_ticker"],
                     yes_bid=bid,
                     yes_ask=ask,
+                    resolution_rules="\n\n".join(v for v in (m.get("rules_primary"), m.get("rules_secondary")) if v),
+                    # Stop news decisions by the trading cutoff, even if settlement is later.
+                    resolution_deadline=datetime.fromisoformat(close_time) if close_time else None,
                 )
         return list(markets.values())
 

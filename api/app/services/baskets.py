@@ -14,7 +14,7 @@ import math
 from dataclasses import dataclass
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.models import Basket, BasketPosition, Market, utcnow
 from app.schemas import PositionIn
@@ -43,10 +43,22 @@ class PositionValuation:
 class Valuation:
     nav: float
     positions: list[PositionValuation]
+    cash: float = 0.0
+    cash_target_weight: float = 0.0
+
+    @property
+    def cash_weight(self) -> float:
+        return self.cash / self.nav if self.nav > 0 else 0.0
 
     @property
     def max_drift(self) -> float:
-        return max((abs(p.drift) for p in self.positions), default=0.0)
+        return max([abs(self.cash_weight - self.cash_target_weight), *(abs(p.drift) for p in self.positions)])
+
+
+def cash_allocation(basket):
+    from app.news_models import NewsAllocation
+    session = object_session(basket)
+    return session.get(NewsAllocation, basket.id) if session else None
 
 
 @dataclass(frozen=True)
@@ -80,6 +92,8 @@ def resolve_weights(weights: list[float | None]) -> list[float]:
 
 
 def _target_units(position: BasketPosition, nav: float, weight: float) -> float:
+    if weight <= 0:
+        return 0.0
     price = position.market.price_for(position.side)
     if price < MIN_PRICE:
         raise BasketError(
@@ -91,10 +105,16 @@ def _target_units(position: BasketPosition, nav: float, weight: float) -> float:
 def rebalanced_weights(basket: Basket) -> dict[int, float]:
     """Target weight per position id after a rebalance: open positions' targets scaled to sum to 1."""
     open_positions = [p for p in basket.positions if p.market.is_open]
+    cash = cash_allocation(basket)
+    cash_weight = cash.cash_weight if cash else 0.0
+    if cash_weight >= 1 - 1e-12:
+        return {p.id: 0.0 for p in open_positions}
     if not open_positions:
         raise BasketError("Every market in this basket has closed")
     total = sum(p.target_weight for p in open_positions)
-    return {p.id: p.target_weight / total for p in open_positions}
+    if total <= 0:
+        raise BasketError("No open market has a positive target weight")
+    return {p.id: (1 - cash_weight) * p.target_weight / total for p in open_positions}
 
 
 def build_positions(session: Session, specs: list[PositionIn]) -> list[BasketPosition]:
@@ -123,13 +143,15 @@ def build_positions(session: Session, specs: list[PositionIn]) -> list[BasketPos
 
 def value_basket(basket: Basket) -> Valuation:
     priced = [(p, p.market.price_for(p.side)) for p in basket.positions]
-    nav = sum(p.units * price for p, price in priced)
+    cash = cash_allocation(basket)
+    nav = sum(p.units * price for p, price in priced) + (cash.cash_units if cash else 0.0)
     positions = []
     for p, price in priced:
         value = p.units * price
         weight = value / nav if nav > 0 else 0.0
         positions.append(PositionValuation(p, price, value, weight, weight - p.target_weight))
-    return Valuation(nav=nav, positions=positions)
+    return Valuation(nav=nav, positions=positions, cash=cash.cash_units if cash else 0.0,
+                     cash_target_weight=cash.cash_weight if cash else 0.0)
 
 
 def plan_rebalance(basket: Basket) -> tuple[Valuation, list[Trade]]:
@@ -154,6 +176,7 @@ def plan_rebalance(basket: Basket) -> tuple[Valuation, list[Trade]]:
 
 def apply_rebalance(basket: Basket) -> list[Trade]:
     """Reset units to target, dropping closed positions and rescaling the rest's target weights."""
+    nav = value_basket(basket).nav
     weights = rebalanced_weights(basket)
     _, trades = plan_rebalance(basket)
     for trade in trades:
@@ -164,4 +187,7 @@ def apply_rebalance(basket: Basket) -> list[Trade]:
         else:
             basket.positions.remove(p)
     basket.rebalanced_at = utcnow()
+    cash = cash_allocation(basket)
+    if cash:
+        cash.cash_units = nav * cash.cash_weight
     return trades

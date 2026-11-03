@@ -6,6 +6,7 @@ import { useAccount } from "@/components/AccountContext";
 import { AutomationPanel } from "@/components/AutomationPanel";
 import { BasketName } from "@/components/BasketName";
 import { ClimatePanel } from "@/components/ClimatePanel";
+import { ExchangePanel } from "@/components/ExchangePanel";
 import { ClimateSettingsCard } from "@/components/ClimateSettingsCard";
 import { useBaskets } from "@/components/BasketsContext";
 import { InfoTip } from "@/components/InfoTip";
@@ -60,7 +61,7 @@ export default function Page() {
   const [history, setHistory] = useState<NavPoint[]>([]);
   // The chart point under the pointer; the header shows it instead of the latest value.
   const [hover, setHover] = useState<NavPoint | null>(null);
-  const { account, setAccount, error: accountError } = useAccount();
+  const { account, setAccount, refresh: refreshAccount, error: accountError } = useAccount();
   const [orders, setOrders] = useState<BasketOrder[]>([]);
   // The holding's value per share after each trade and sync, drawn over the NAV.
   const [mine, setMine] = useState<StakePoint[]>([]);
@@ -70,6 +71,8 @@ export default function Page() {
   const [deleting, setDeleting] = useState(false);
   const [climate, setClimate] = useState<Climate | null>(null);
   const [climateSettings, setClimateSettings] = useState<ClimateSettings>(DEFAULT_CLIMATE_SETTINGS);
+  const [climateError, setClimateError] = useState<string | null>(null);
+  const [savingClimate, setSavingClimate] = useState(false);
 
   function fail(err: unknown) {
     if (err instanceof UnauthorizedError) router.replace("/login");
@@ -103,22 +106,41 @@ export default function Page() {
 
   // The news climate is read once per basket; the classifier refreshes it on its own schedule.
   const basketId = basket?.id;
+  async function loadClimate() {
+    if (!basketId) return;
+    try {
+      const next = await getClimate(basketId);
+      setClimate(next);
+      setClimateSettings(next.settings);
+      setClimateError(null);
+    } catch (err) {
+      setClimateError(errorText(err));
+    }
+  }
   useEffect(() => {
     if (!basket) return;
     setClimate(null);
-    getClimate(basket.id, basket.positions)
-      .then(setClimate)
-      .catch(() => setClimate(null));
+    loadClimate();
   }, [basketId]);
 
-  function changeClimateSettings(next: ClimateSettings) {
-    setClimateSettings(next);
-    if (basket) saveClimateSettings(basket.id, next).catch(() => {});
+  async function changeClimateSettings(next: ClimateSettings) {
+    if (!basket || savingClimate) return;
+    setSavingClimate(true);
+    try {
+      setClimateSettings(await saveClimateSettings(basket.id, next));
+      setClimateError(null);
+      await loadClimate();
+    } catch (err) {
+      setClimateError(errorText(err));
+    } finally {
+      setSavingClimate(false);
+    }
   }
 
   // Follow live prices. A failed poll keeps what's shown; the next one tries again.
   usePoll(() => {
     loadBasket().catch(() => {});
+    if (!savingClimate) loadClimate();
   });
 
   async function remove() {
@@ -278,8 +300,9 @@ export default function Page() {
               <p className="bd-foot">
                 A Yes contract pays $1 if the event happens; a No contract pays
                 $1 if it doesn&rsquo;t. Price is today&rsquo;s cost per
-                contract. Weights add up to 100%.
+                contract. Market weights and cash add up to 100%.
               </p>
+              {basket.cash_target_weight > 0 && <p className="bd-foot">Saved cash target: {pct(basket.cash_target_weight, 1)} · Current index cash weight: {pct(basket.cash_weight, 1)}</p>}
             </section>
 
             <ClimatePanel
@@ -288,6 +311,8 @@ export default function Page() {
               climate={climate}
               settings={climateSettings}
               question={question}
+              error={climateError}
+              onApplied={() => { setPreview(null); loadClimate(); loadActivity(); refreshAccount(); loadBasket(); }}
             />
 
             <section className="bd-section">
@@ -325,6 +350,7 @@ export default function Page() {
                   onPreview={setPreview}
                   onTraded={traded}
                   onUnauthorized={() => router.replace("/login")}
+                  newsPending={!!climate?.cycle && ["SELLING", "BUYING"].includes(climate.cycle.status)}
                 />
                 <AutomationPanel
                   basketId={basket.id}
@@ -340,7 +366,10 @@ export default function Page() {
               settings={climateSettings}
               regime={climate?.regime ?? null}
               onChange={changeClimateSettings}
+              busy={savingClimate}
+              error={climateError}
             />
+            <ExchangePanel basketId={basket.id} />
           </aside>
         </div>
       </div>

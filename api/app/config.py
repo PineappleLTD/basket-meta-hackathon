@@ -48,3 +48,19 @@ class Settings(BaseSettings):
     llama_base_url: str = "https://api.meta.ai/v1"
     # Names saved baskets. Run at minimal reasoning so a save waits about a second.
     llama_namer_model: str = "muse-spark-1.1"
+    # Classification is cache-only here. Extraction belongs to the separately budgeted news agent.
+    news_model_path: str | None = None
+    news_feature_cache: str | None = None
+    # Never inferred from Meta credentials. External execution is off by default.
+    live_enabled: bool = False
+    live_environment: str = "demo"
+    live_production_enabled: bool = False
+    live_owner_id: int | None = None
+    live_subaccount: int = Field(default=0, ge=0, le=63)
+    live_key_id: str | None = None
+    live_private_key_path: str | None = None
+    live_max_order_cents: int | None = Field(default=None, gt=0)
+    live_max_cycle_cents: int | None = Field(default=None, gt=0)
+    live_max_daily_turnover_cents: int | None = Field(default=None, gt=0)
+    live_max_fee_per_contract_cents: int | None = Field(default=None, ge=0)
+    live_experimental_model_accepted: bool = False

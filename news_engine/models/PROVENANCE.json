@@ -1,0 +1,16 @@
+{
+  "source_artifact_sha256": "a138737684e87d53ca35055e809f721ec9c7e354c1d9f0365e549c372b87ac3a",
+  "dataset_sha256": "12979b4491337d0f9702583a6f6c7295d737dac8d561b029ede5c2edb0ad36bf",
+  "train_rows": 2400,
+  "train_story_groups": 419,
+  "alpha": 1.0,
+  "experimental": true,
+  "publication_note": "Deployment copy: private local paths and full evaluation/audit metadata omitted; fitted preprocessing and Ridge parameters unchanged.",
+  "deployment_artifact_sha256": "f38a7254b096a78d6cfa08b8ee7628836f6f9ab5e7406b7bc07b20406baa9c26",
+  "prediction_parity": {
+    "synthetic_feature_probes": 107,
+    "exactly_equal": true
+  },
+  "retrained": false,
+  "final_labels_evaluated": false
+}

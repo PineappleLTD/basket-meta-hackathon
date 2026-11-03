@@ -39,6 +39,7 @@ interface Props {
   onPreview: (p: TradePreview | null) => void;
   onTraded: (a: Account) => void;
   onUnauthorized: () => void;
+  newsPending?: boolean;
 }
 
 // Prices an order (a dry run) whenever `key` changes, after typing pauses. `load` null clears it.
@@ -83,12 +84,13 @@ function usePreview(
 }
 
 // Your holding, then buy, sell or rebalance it: pick an amount, see what it places (a dry run), and place it.
-export function TradePanel({ basket, account, held, question, onPreview, onTraded, onUnauthorized }: Props) {
+export function TradePanel({ basket, account, held, question, onPreview, onTraded, onUnauthorized, newsPending }: Props) {
   const [tab, setTab] = useState<Tab>("buy");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const active: Tab = held ? tab : "buy";
+  useEffect(() => { if (newsPending) onPreview(null); }, [newsPending]);
 
   function pick(next: Tab) {
     setTab(next);
@@ -116,7 +118,7 @@ export function TradePanel({ basket, account, held, question, onPreview, onTrade
 
   return (
     <div className="ticket">
-      {held && <HoldingSummary held={held} onRebalance={() => pick("rebalance")} />}
+      {held && <HoldingSummary held={held} onRebalance={() => pick("rebalance")} newsPending={newsPending} />}
 
       <div className="ticket-head">
         <div className="ticket-tabs" role="tablist" aria-label="Order type">
@@ -127,7 +129,7 @@ export function TradePanel({ basket, account, held, question, onPreview, onTrade
               role="tab"
               className="ticket-tab"
               aria-selected={active === t}
-              disabled={!held && t !== "buy"}
+              disabled={newsPending || (!held && t !== "buy")}
               onClick={() => pick(t)}
             >
               {t === "buy" ? "Buy" : t === "sell" ? "Sell" : "Rebalance"}
@@ -136,16 +138,17 @@ export function TradePanel({ basket, account, held, question, onPreview, onTrade
         </div>
       </div>
 
-      {active === "buy" && <BuyTab key="buy" {...shared} />}
-      {active === "sell" && held && <SellTab key="sell" {...shared} held={held} />}
-      {active === "rebalance" && held && <RebalanceTab key="rebalance" {...shared} held={held} />}
+      {newsPending && <p className="invest-fine" role="status">A news rebalance is pending. Other trades wait until it finishes or is cancelled.</p>}
+      {!newsPending && active === "buy" && <BuyTab key="buy" {...shared} />}
+      {!newsPending && active === "sell" && held && <SellTab key="sell" {...shared} held={held} />}
+      {!newsPending && active === "rebalance" && held && <RebalanceTab key="rebalance" {...shared} held={held} />}
     </div>
   );
 }
 
 const plural = (n: number, word: string) => (n === 1 ? word : `${word}s`);
 
-function HoldingSummary({ held, onRebalance }: { held: BasketHoldings; onRebalance: () => void }) {
+function HoldingSummary({ held, onRebalance, newsPending }: { held: BasketHoldings; onRebalance: () => void; newsPending?: boolean }) {
   const ahead = held.holding_return !== null && held.index_return !== null ? held.holding_return - held.index_return : null;
   return (
     <div className="ticket-held">
@@ -153,7 +156,8 @@ function HoldingSummary({ held, onRebalance }: { held: BasketHoldings; onRebalan
         <h2>Your position</h2>
       </div>
       <dl className="ticket-rows">
-        <Row label="Market value" value={usd(held.value)} tip="Your contracts valued at current mid prices." />
+        <Row label="Position value" value={usd(held.value)} tip="Your contracts at current mid prices, plus cash reserved for this ETF." />
+        {held.cash > 0 && <Row label="ETF cash" value={usd(held.cash)} tip="Cash reserved for this ETF. It is excluded from general buying power." />}
         <Row
           label="Liquidation value"
           value={usd(held.liquidation_value)}
@@ -203,7 +207,7 @@ function HoldingSummary({ held, onRebalance }: { held: BasketHoldings; onRebalan
           />
         )}
       </dl>
-      {held.max_drift > DRIFT_ALERT && (
+      {!newsPending && held.max_drift > DRIFT_ALERT && (
         <div className="ticket-alert" role="status">
           <p>
             A holding has drifted {pct(held.max_drift, 1)} from its target weight.
@@ -243,13 +247,13 @@ interface TabProps {
 }
 
 function BuyTab({ basket, account, question, busy, done, failed, run, onPreview, onUnauthorized, clear }: TabProps) {
-  const [input, setInput] = useState(String(Math.min(DEFAULT_AMOUNT, Math.floor(account.cash))));
+  const [input, setInput] = useState(String(Math.min(DEFAULT_AMOUNT, Math.floor(account.available_cash))));
   const amount = Number(input);
   const valid = input.trim() !== "" && Number.isFinite(amount) && amount > 0;
-  const tooMuch = valid && amount > account.cash;
+  const tooMuch = valid && amount > account.available_cash;
   const { preview, problem, pricing } = usePreview(
     valid && !tooMuch ? () => previewBuy(basket.id, amount) : null,
-    `${input}|${account.cash}|${basket.id}`,
+    `${input}|${account.available_cash}|${basket.id}`,
     onPreview,
     onUnauthorized,
   );
@@ -258,7 +262,7 @@ function BuyTab({ basket, account, question, busy, done, failed, run, onPreview,
   return (
     <>
       <label htmlFor="amount" className="invest-label">
-        Amount <span>{usd(account.cash)} buying power</span>
+        Amount <span>{usd(account.available_cash)} buying power</span>
       </label>
       <div className="invest-field">
         <span aria-hidden="true">$</span>
@@ -274,7 +278,7 @@ function BuyTab({ basket, account, question, busy, done, failed, run, onPreview,
         />
       </div>
       <div className="invest-chips">
-        {QUICK_AMOUNTS.filter((a) => a <= account.cash).map((a) => (
+        {QUICK_AMOUNTS.filter((a) => a <= account.available_cash).map((a) => (
           <button
             key={a}
             type="button"
@@ -291,7 +295,7 @@ function BuyTab({ basket, account, question, busy, done, failed, run, onPreview,
       </div>
 
       <Outcome
-        problem={tooMuch ? `You have ${usd(account.cash)} available.` : failed ?? problem}
+        problem={tooMuch ? `You have ${usd(account.available_cash)} available.` : failed ?? problem}
         done={done}
         pricing={pricing}
         preview={preview}
@@ -334,7 +338,7 @@ function SellTab({ basket, question, busy, done, failed, run, onPreview, onUnaut
     onPreview,
     onUnauthorized,
   );
-  const receive = preview?.cash_delta ?? 0;
+  const receive = preview ? preview.cash_delta - preview.basket_cash_delta : 0;
   const label = fraction === 1 ? "everything" : pct(fraction);
 
   return (

@@ -124,6 +124,8 @@ class BasketOut(BaseModel):
     rebalanced_at: datetime | None
     nav: float
     max_drift: float
+    cash_weight: float = 0.0
+    cash_target_weight: float = 0.0
     positions: list[PositionOut]
 
 
@@ -254,11 +256,13 @@ class BasketHoldingsOut(BaseModel):
     holding_return: float | None
     index_return: float | None
     holdings: list[HoldingOut]
+    cash: float = 0.0
 
 
 class AccountOut(BaseModel):
     mode: AccountMode
     cash: float
+    available_cash: float = 0.0
     starting_cash: float
     holdings_value: float
     # Cash plus holdings at market.
@@ -318,6 +322,7 @@ class BasketOrderOut(BaseModel):
     amount: float | None
     created_at: datetime
     orders: list[OrderOut]
+    basket_cash_delta: float = 0.0
 
 
 class PlannedOrderOut(BaseModel):
@@ -350,6 +355,7 @@ class TradePreview(BaseModel):
     price_impact: float
     cash_delta: float
     cash_after: float
+    basket_cash_delta: float = 0.0
 
 
 class TradeResult(BaseModel):

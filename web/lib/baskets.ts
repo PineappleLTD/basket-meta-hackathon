@@ -20,6 +20,8 @@ export interface Basket {
   // Starts at 100 when the basket is created.
   nav: number;
   positions: Position[];
+  cash_weight: number;
+  cash_target_weight: number;
 }
 
 export const BASE_NAV = 100;
