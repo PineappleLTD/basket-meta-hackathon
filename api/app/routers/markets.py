@@ -52,7 +52,7 @@ def sync(request: Request, _user: CurrentUser):
     place automated trades that are due. Requires sign-in.
 
     A live sync pages through every open event, so it takes around half a minute. The API
-    also syncs on its own every PMETF_SYNC_INTERVAL_MINUTES.
+    also syncs before every POST /theses/select.
     """
     state = request.app.state
     if not state.sync_lock.acquire(blocking=False):

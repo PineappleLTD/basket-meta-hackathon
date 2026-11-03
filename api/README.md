@@ -40,8 +40,6 @@ Env vars (or `.env` at the repo root / in `api/`), all prefixed `PMETF_`:
 | `PMETF_PAPER_FEE_RATE`             | `0.07` – Kalshi taker fee multiplier for paper fills                          |
 | `PMETF_PAPER_QUOTE_CACHE_SECONDS`  | `15` – how long a fetched order book is reused (preview, then the order)      |
 | `PMETF_PAPER_MAX_QUOTE_AGE_MINUTES`| `30` – oldest stored quote paper fills fall back to when Kalshi is unreachable |
-| `PMETF_SYNC_INTERVAL_MINUTES`      | `15` – background sync (settlement, automations); `0` turns it off            |
-| `PMETF_SYNC_MAX_AGE_MINUTES`       | `15` – `/theses/select` syncs first when the last sync is older; `0` turns it off |
 | `PMETF_CORS_ORIGINS`               | `["http://localhost:3000", "http://localhost:5173"]`                          |
 | `META` (or `PMETF_META_API_KEY`)   | unset – Meta Model API key (`LLM_…`); `/theses/select` returns 503 without it |
 | `PMETF_LLAMA_MODEL`                | `muse-spark-1.3`                                                              |
@@ -106,7 +104,7 @@ value per share. `share_value` is directly comparable to the NAV, and `holding_r
 `index_return` shows what trading costs and rounding took. A basket with holdings can't be
 deleted (409); order history outlives it.
 
-**Automations** run after every sync (background, `POST /markets/sync`, or `sync.py`), each
+**Automations** run after every sync (`/theses/select`, `POST /markets/sync`, or `sync.py`) and every live refresh, each
 committed on its own, with the outcome in the stake's `note`:
 
 - auto-rebalance once any holding drifts more than `auto_rebalance_drift` from target;
@@ -130,7 +128,7 @@ committed on its own, with the outcome in the stake's `note`:
   one shared timestamp writes a `market_prices` row per market, a `basket_navs` row per
   basket and an `account_values` row per trading account. It also looks up results for closed
   markets in use and pays out holdings in resolved ones. `refresh` runs a sync and then the
-  automations; the API runs it every `PMETF_SYNC_INTERVAL_MINUTES`.
+  automations; the API runs it before every `/theses/select`.
 - `app/services/baskets.py` – basket math: units are sized so NAV starts at 100; drift is
   current weight minus target; rebalancing resets units to targets at the current NAV.
 - `app/llm.py` – `MetaLlama`: chat completions against the Meta Model API's OpenAI-compatible

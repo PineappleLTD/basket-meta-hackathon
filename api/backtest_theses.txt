@@ -1,0 +1,26 @@
+# One thesis per line for backtest.py --generate. Blank lines and # comments are skipped.
+Inflation will stay stubbornly above 3% into next year.
+The Fed will cut rates aggressively as the labor market weakens.
+The US economy avoids a recession and keeps growing steadily.
+A recession hits the US in 2027.
+Oil prices will spike because of Middle East conflict.
+Gold keeps hitting record highs as investors flee the dollar.
+Bitcoin breaks above $150k as crypto adoption accelerates.
+The crypto market crashes and Bitcoin falls below $80k.
+Democrats take back the House in the 2026 midterms.
+Republicans keep control of both chambers of Congress.
+Trump's approval rating keeps falling.
+Tariffs on China escalate further.
+The war in Ukraine reaches a ceasefire.
+OpenAI keeps its lead in AI and releases GPT-6.
+Nvidia remains the most valuable company in the world.
+Tesla struggles as EV demand slows.
+The S&P 500 finishes the year at a record high.
+This will be one of the hottest years on record.
+A major hurricane hits the US mainland this season.
+SpaceX Starship reaches orbit and starts regular flights.
+Taylor Swift dominates the charts and award shows.
+A big-budget movie flops at the box office this year.
+Elon Musk steps back from running his companies.
+The Supreme Court rules against the administration on major cases.
+Housing prices fall as mortgage rates stay high.
