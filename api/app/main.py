@@ -15,7 +15,8 @@ from app.db import SessionDep, init_db, make_engine
 from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
 from app.models import AccountMode, Market
-from app.routers import accounts, auth, baskets, markets, theses
+from app.routers import accounts, auth, baskets, markets, theses, news, exchange
+from app.services import exchange_execution
 from app.routers.common import sync_now
 from app.services.sync import refresh_live
 
@@ -71,6 +72,8 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
         app.state.llm = make_llm(settings)
         app.state.namer = make_namer(settings)
         app.state.brokers = make_brokers(settings, app.state.market_source)
+        exchange_gateway = exchange_execution.make_gateway(settings, app.state.market_source)
+        app.state.exchange_gateway = exchange_gateway
 
         if settings.seed_on_startup and not has_markets:
             # An injected source seeds instantly; a live first sync takes about a minute,
@@ -87,6 +90,8 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
         yield
         stop.set()
         engine.dispose()
+        if exchange_gateway:
+            exchange_gateway.venue.http.close()
 
     app = FastAPI(title="Prediction Market ETF API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
@@ -100,6 +105,8 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
     app.include_router(baskets.router)
     app.include_router(theses.router)
     app.include_router(accounts.router)
+    app.include_router(news.router)
+    app.include_router(exchange.router)
 
     @app.get("/health", tags=["meta"])
     def health(session: SessionDep):
@@ -128,6 +135,7 @@ def _schedule(app: FastAPI, stop: threading.Event) -> None:
             continue
         try:
             log.info("Scheduled sync: %s", sync_now(app.state))
+            exchange_execution.run(app.state.sessionmaker, app.state.exchange_gateway)
         except Exception:
             log.exception("Scheduled sync failed; trying again next interval")
         finally:
@@ -143,6 +151,7 @@ def _live(app: FastAPI, stop: threading.Event) -> None:
         try:
             with app.state.sessionmaker() as session:
                 counts = refresh_live(session, app.state.market_source, app.state.brokers)
+            exchange_execution.run(app.state.sessionmaker, app.state.exchange_gateway)
             if counts["automated"]:
                 log.info("Live refresh: %s", counts)
         except Exception:

@@ -55,7 +55,7 @@ function AccountSummary() {
       </div>
       <div>
         <dt>Buying power</dt>
-        <dd>{usd(account.cash)}</dd>
+        <dd>{usd(account.available_cash)}</dd>
       </div>
     </dl>
   );

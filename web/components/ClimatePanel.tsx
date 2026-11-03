@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { InfoTip } from "./InfoTip";
 import type { Position } from "@/lib/baskets";
 import {
   applyShifts,
-  proposeShifts,
+  reviewStoppedCycle,
   turnover,
   type Climate,
   type ClimateSettings,
@@ -13,7 +13,7 @@ import {
   type Regime,
   type Shift,
 } from "@/lib/climate";
-import { dateTime, errorText, pct, signedPct } from "@/lib/format";
+import { dateTime, errorText, pct, signedPct, usd } from "@/lib/format";
 
 const REGIMES: [Regime, string][] = [
   ["calm", "Calm"],
@@ -29,32 +29,55 @@ interface Props {
   climate: Climate | null;
   settings: ClimateSettings;
   question: (marketId: number) => string;
+  error?: string | null;
+  onApplied: () => void;
 }
 
 // What the news classifier is reading around this basket, and the weights it would move toward.
-export function ClimatePanel({ basketId, positions, climate, settings, question }: Props) {
-  const shifts = useMemo(
-    () => (climate ? proposeShifts(positions, climate.signals, settings) : []),
-    [positions, climate, settings],
-  );
+export function ClimatePanel({ basketId, climate, settings, question, error, onApplied }: Props) {
+  const shifts = climate?.proposal.shifts ?? [];
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  async function review() {
+    if (!climate?.cycle) return;
+    setReviewBusy(true);
+    setReviewError(null);
+    try { await reviewStoppedCycle(basketId, climate.cycle.id); onApplied(); }
+    catch (err) { setReviewError(errorText(err)); }
+    finally { setReviewBusy(false); }
+  }
 
   return (
     <section className="bd-section clim">
       <h2>
-        News climate <span className="tag">Preview</span>
+        News climate <span className="tag">Paper only · Experimental</span>
         <InfoTip>
-          A classifier reads the news that touches this basket&rsquo;s markets, scores each story for direction and
-          confidence, and suggests target weights that lean toward the side the news favours.
+          Muse extracts evidence and Ridge scores its effect on the side held. Accepted adverse evidence can reduce a
+          holding and move confirmed proceeds among this ETF&rsquo;s existing positions. Trading accuracy still needs independent validation.
         </InfoTip>
       </h2>
 
       {!climate ? (
-        <p className="bd-foot">Reading the news…</p>
+        <p className={error ? "auth-error" : "bd-foot"} role={error ? "alert" : undefined}>{error ?? "Loading saved assessments…"}</p>
       ) : (
         <>
           <RegimeStrip climate={climate} />
+          {climate.missing_rules.length > 0 && <p className="bd-foot">{climate.missing_rules.length} positions need exact exchange rules before they can be scored. Sync market data to load them.</p>}
+          <p className="bd-foot">Reserved basket cash: {usd(climate.basket_cash)}. New markets and unheld outcome sides are excluded.</p>
+          {climate.cycle && <div className="clim-block" role="status">
+            <h3>Paper rebalance: {climate.cycle.status.toLowerCase()}</h3>
+            <p className="bd-foot">{climate.cycle.note}</p>
+            <p className="bd-foot">Sales confirmed: {climate.cycle.sells.reduce((s, l) => s + l.filled, 0)} of {climate.cycle.sells.reduce((s, l) => s + l.count, 0)} contracts. Purchases wait for every planned sale.</p>
+            {["BLOCKED", "EXPIRED", "CANCELLED"].includes(climate.cycle.status) && <>
+              <p className="bd-foot">Automatic trades are paused. Keeping the current allocation saves the holdings and cash as they stand, and leaves news response off.</p>
+              <button type="button" className="btn auto-save" disabled={reviewBusy} onClick={review}>{reviewBusy ? "Saving…" : "Keep current holdings and ETF cash"}</button>
+              {reviewError && <p className="auth-error" role="alert">{reviewError}</p>}
+            </>}
+          </div>}
           {climate.topics.length > 0 && <Topics climate={climate} />}
-          <Proposal basketId={basketId} shifts={shifts} settings={settings} signals={climate.signals} question={question} />
+          <Proposal key={climate.proposal.id} basketId={basketId} proposalId={climate.proposal.id}
+            reason={climate.proposal.reason} pending={!!climate.cycle && ["SELLING", "BUYING", "BLOCKED", "EXPIRED", "CANCELLED"].includes(climate.cycle.status)}
+            shifts={shifts} settings={settings} signals={climate.signals} question={question} onApplied={onApplied} />
           <Signals signals={climate.signals} question={question} />
         </>
       )}
@@ -116,12 +139,17 @@ function Proposal({
   settings,
   signals,
   question,
+  proposalId, reason, pending, onApplied,
 }: {
   basketId: number;
   shifts: Shift[];
   settings: ClimateSettings;
   signals: ClimateSignal[];
   question: (marketId: number) => string;
+  proposalId: string;
+  reason: string | null;
+  pending: boolean;
+  onApplied: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [applied, setApplied] = useState<string | null>(null);
@@ -138,8 +166,9 @@ function Proposal({
     setBusy(true);
     setError(null);
     try {
-      const res = await applyShifts(basketId, moved);
-      setApplied(res.applied_at);
+      const res = await applyShifts(basketId, proposalId);
+      setApplied(res.updated_at);
+      onApplied();
     } catch (err) {
       setError(errorText(err));
     }
@@ -155,9 +184,11 @@ function Proposal({
 
       {settings.mode === "off" ? (
         <p className="bd-foot">Climate reweighting is off. Turn it on in the sidebar to see suggested weights.</p>
-      ) : moved.length === 0 || dismissed ? (
+      ) : pending ? (
+        <p className="bd-foot">The saved rebalance must finish or be reviewed before another starts. Purchases wait for all planned sales.</p>
+      ) : moved.length === 0 || dismissed || reason ? (
         <p className="bd-foot">
-          {dismissed ? "Dismissed. A new proposal appears when the news moves again." : "The news doesn’t move any weight past the threshold. Nothing to change."}
+          {dismissed ? "Dismissed. A new proposal appears when the evidence changes." : reason ?? "No accepted adverse evidence requires a reduction."}
         </p>
       ) : (
         <>
@@ -199,15 +230,15 @@ function Proposal({
           </ul>
 
           {settings.mode === "auto" ? (
-            <p className="bd-foot">Auto mode: these weights apply at the next price sync, then your holding rebalances to them.</p>
+            <p className="bd-foot">Auto mode starts the paper rebalance at the next price update. It waits for every planned sale before purchasing existing ETF positions.</p>
           ) : applied ? (
             <p className="bd-foot">
-              <span className="invest-done">Applied {dateTime(applied)}.</span> Your holding moves to these weights at the next rebalance.
+              <span className="invest-done">Started {dateTime(applied)}.</span> Follow the confirmed sale counts above.
             </p>
           ) : (
             <div className="clim-actions">
               <button type="button" className="btn auto-save" onClick={apply} disabled={busy}>
-                {busy ? "Applying…" : "Apply new weights"}
+                {busy ? "Starting…" : "Rebalance paper holdings"}
               </button>
               <button type="button" className="text-btn" onClick={() => setDismissed(true)} disabled={busy}>
                 Dismiss
@@ -260,10 +291,8 @@ function Signals({ signals, question }: { signals: ClimateSignal[]; question: (m
               </p>
               <p className="clim-head">{s.url ? <a href={s.url} target="_blank" rel="noreferrer">{s.headline} ↗</a> : s.headline}</p>
               <p className="clim-meta">
-                <span className={s.sentiment >= 0 ? "up" : "down"}>
-                  {s.sentiment >= 0 ? "▲ Leans Yes" : "▼ Leans No"} {Math.abs(s.sentiment).toFixed(2)}
-                </span>
-                <span>{pct(s.confidence)} confidence</span>
+                <span className={s.sentiment > 0 ? "up" : s.sentiment < 0 ? "down" : ""}>{s.classification.toLowerCase()} for the held side</span>
+                <span>{pct(s.confidence)} evidence confidence (uncalibrated)</span>
                 <span>
                   Touches {s.market_ids.length === 1 ? `“${question(s.market_ids[0])}”` : `${s.market_ids.length} markets`}
                 </span>

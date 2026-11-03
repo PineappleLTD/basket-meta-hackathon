@@ -1,0 +1,3 @@
+# Run from the repository root: python -m pip install -r requirements-news.txt
+-e ./news_engine
+-r api/requirements.txt
