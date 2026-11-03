@@ -761,3 +761,52 @@ details[open] > .hist-row .hist-what { color: var(--accent); }
   .fl-loop li + li::before { content: "↓"; left: 0; top: -22px; }
 }
 
+
+/* Sidebar link to the arbitrage scanner, under "new basket" */
+.sidebar-tool { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); font-size: 13.5px; font-weight: 500; transition: border-color 0.15s; }
+.sidebar-tool .mono { font-size: 10.5px; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.sidebar-tool:hover { border-color: var(--muted); }
+.sidebar-tool.active { border-color: var(--ink); }
+.sidebar-tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Arbitrage scanner */
+.arb { max-width: 920px; }
+.arb-stats .arb-sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.arb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin-top: 20px; }
+.arb-meta { font-size: 12.5px; line-height: 1.5; color: var(--muted); font-variant-numeric: tabular-nums; }
+.arb-meta.up { color: var(--accent); }
+.arb-list { display: flex; flex-direction: column; margin: 12px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--ink); }
+.arb-card { padding: 20px 0 24px; border-bottom: 1px solid var(--line); }
+.arb-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.arb-tags .tag { margin-left: 0; }
+.arb-title { margin: 10px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.arb-why { max-width: 680px; margin-top: 6px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.arb-legs { margin-top: 14px; }
+.arb-legs td { padding-top: 10px; padding-bottom: 10px; }
+.arb-q { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.arb-nums { max-width: 420px; margin-top: 16px; }
+.arb-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 20px; margin-top: 16px; }
+.arb-lock { height: 38px; padding: 0 18px; border-radius: 6px; font-size: 14px; }
+.arb-ticket { max-width: 420px; margin-top: 16px; }
+.arb-how { display: flex; flex-direction: column; gap: 10px; max-width: 680px; margin: 12px 0 0; padding: 0; list-style: none; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.arb-how b { color: var(--ink); font-weight: 500; }
+.arb-find { margin-top: 16px; }
+.arb-form { display: flex; gap: 8px; max-width: 620px; }
+.arb-query { flex: 1; min-width: 0; font-size: 15px; }
+.arb-form .btn { border-radius: 6px; }
+.arb-find > .arb-meta, .arb-find > .auth-error { margin-top: 10px; }
+.arb-pairs { margin: 10px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.arb-pairs li { display: flex; flex-direction: column; gap: 3px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.arb-pair { font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.arb-pair b { font-weight: 500; }
+.arb-pairs .tag { margin-left: 0; margin-right: 4px; }
+
+/* Lock basket side card */
+.lock-why { margin-top: 14px; }
+.lock-add { display: flex; align-items: center; justify-content: center; margin-top: 16px; }
+.lock-unwind { display: block; margin-top: 12px; font-size: 13px; }
+
+@media (max-width: 640px) {
+  .arb-form { flex-direction: column; }
+  .arb-nums, .arb-ticket { max-width: none; }
+}

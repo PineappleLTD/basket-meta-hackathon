@@ -112,6 +112,45 @@ committed on its own, with the outcome in the stake's `note`:
 - conditional orders that fire once the basket NAV is `at_or_below` / `at_or_above` a level:
   limit buys, stop-losses and take-profits. They fill at market; one that can't is `failed`.
 
+## Arbitrage scanner
+
+Groups of Kalshi markets whose prices break a rule of probability, each fixed by a set of
+contracts (one of every leg) that pays a floor whatever happens:
+
+- **Strike ladders** (`ladder`): "above 4%" can't resolve YES unless "above 3.75%" does, so YES
+  on the lower strike plus NO on the higher pays at least $1. Both markets must be one-sided
+  thresholds in the same event, the event can't be mutually exclusive, and their rules must
+  match once each market's own strike is blanked. (One event can hold unrelated goals, and
+  Kalshi labels "exactly N" buckets as `less` with floor = cap; neither is a ladder.)
+- **Deadline pairs** (`time`): "by June" implies "by December". Both must be cumulative (they
+  close early when the event happens, and their rules give a window), their rules must match
+  apart from dates and times, and the later one's window must start no later than the earlier
+  one's (an explicit "from <date>" in the rules, else when the market opened).
+- **Brackets** (`bracket_no`, `bracket_yes`): at most one market of a mutually exclusive event
+  wins, so NO on k of them pays at least k − 1 (the subset with the best return is used). When
+  every one of the event's markets is synced and their ranges leave no value uncovered, YES on
+  all of them pays exactly $1.
+
+Each sync stores every market's strike, event and rule templates (`market_terms`), then
+`refresh` scans: every group is screened at the stored top of book, the 60 best within a cent
+of paying are priced against the live order books with Kalshi's fees, and each is sized at
+the number of sets that makes the most money. What pays is upserted into
+`arb_opportunities` (first/last seen, times seen, best profit), and what no longer pays is
+marked inactive, so the table is the benchmark; `arb_scans` logs every pass.
+
+**Locks** (paper only) buy one contract of every leg per set into a basket marked in
+`lock_baskets`. They re-price against the live books first (409 if the gap closed or a size
+doesn't pay), check cash, and buy every leg; if one fills short, the others' extra contracts
+are sold back so the legs match, and if one fills nothing, nothing is locked. Lock baskets
+refuse buys by weight, rebalances (holdings or index), partial sells, automations,
+conditional orders, news shifts and exchange connection; selling everything unwinds them, and
+settlement pays the floor out as usual.
+
+**Implications** across events ("a recession in 2027" and "the Fed cuts") need a model to read
+the questions, so they run on demand: the model proposes pairs among markets matching a query,
+and code checks the price rule (the implied market can't be the less likely one). Pairs priced
+backwards are logged as `implication` opportunities with `guaranteed: false` and can't be locked.
+
 ## Layout
 
 - `app/kalshi/` – market data returning normalized `MarketData` through the `MarketSource`
@@ -155,6 +194,9 @@ committed on its own, with the outcome in the stake's `note`:
   stake, and paying out resolved markets.
 - `app/services/automation.py` – conditional orders, recurring buys and auto-rebalancing, run
   after each sync.
+- `app/services/arbitrage.py` – the arbitrage scanner: market terms from each sync, screening,
+  sizing against order books, the opportunity log, locks, and model-proposed implications.
+  `app/arb_models.py` holds its tables, additive so existing databases need no migration.
 - `app/auth.py` – password hashing, sessions, and the `CurrentUser` dependency routes use to
   require sign-in.
 - `app/routers/` – HTTP endpoints.
@@ -173,7 +215,7 @@ committed on its own, with the outcome in the stake's `note`:
 | GET          | `/markets`                                | `q`, `is_open`, `limit`, `offset`; sorted by volume                                                                                                                                                                                                                                                                                                     |
 | GET          | `/markets/{id}`                           |                                                                                                                                                                                                                                                                                                                                                         |
 | GET          | `/markets/{id}/prices`                    | YES price history, oldest first; `since`, `limit`                                                                                                                                                                                                                                                                                                       |
-| POST         | `/markets/sync`                           | 🔒 pull from Kalshi; records prices and NAVs, settles resolved markets, runs automations; 409 if a sync is running                                                                                                                                                                                                                                                                                  |
+| POST         | `/markets/sync`                           | 🔒 pull from Kalshi; records prices and NAVs, settles resolved markets, runs automations and the arbitrage scan; 409 if a sync is running                                                                                                                                                                                                                                                                                  |
 | GET / POST   | `/baskets`                                | 🔒 your baskets; create: `{name?, description?, positions: [{market_id, side: yes\|no, weight?}]}`; omit all weights for equal weight; omit `name` to save as "New basket"                                                                                                                                                                                                                    |
 | GET / DELETE | `/baskets/{id}`                           | 🔒 includes NAV, per-position value, weight, drift                                                                                                                                                                                                                                                                                                      |
 | GET          | `/baskets/{id}/nav`                       | 🔒 NAV history (creation + every sync), oldest first; `since`, `limit`                                                                                                                                                                                                                                                                                  |
@@ -193,3 +235,8 @@ committed on its own, with the outcome in the stake's `note`:
 | GET          | `/accounts/{mode}/conditional-orders`     | 🔒 newest first; `basket_id`, `status`                                                                                                                                                                                                                                                                                                                   |
 | POST         | `/accounts/{mode}/baskets/{id}/conditional-orders` | 🔒 `{action, amount, condition: at_or_below\|at_or_above, nav}`; amount is dollars for a buy, a 0–1 share for a sell; 409 if the NAV is already there                                                                                                                                                                                         |
 | DELETE       | `/accounts/{mode}/conditional-orders/{id}`| 🔒 cancel; 409 if it already fired                                                                                                                                                                                                                                                                                                                      |
+| GET          | `/arbitrage`                              | 🔒 open opportunities (most profit first), implications checked in the last day, and the benchmark summary: scans, opportunities logged, profit open now, your locks |
+| POST         | `/arbitrage/scan`                         | 🔒 `{sync?=false}`; scan now (about a second), or sync Kalshi first (about 30s, which scans) |
+| POST         | `/arbitrage/implications`                 | 🔒 `{query}` → model-proposed pairs with relation, confidence and price check; logs pairs priced backwards. 422 if under 2 markets match, 502 on model failure, 503 with no key |
+| GET          | `/accounts/{mode}/arbitrage/locks`        | 🔒 your lock baskets with cost, guaranteed payout, profit, and `status` (`locked`, `settled`, `closed`) |
+| POST         | `/accounts/{mode}/arbitrage/{id}/lock`    | 🔒 paper only: `{sets?, dry_run?}`; without `sets`, the most profitable size; a second lock of the same opportunity adds to its basket. 409 if it no longer pays, the books can't fill it, cash is short, or the opportunity isn't guaranteed |

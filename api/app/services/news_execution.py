@@ -270,6 +270,10 @@ def run(session, brokers, now=None):
             basket = session.get(Basket, config.basket_id)
             if not basket or basket.owner_id != account.user_id:
                 continue
+            from app.arb_models import lock_for
+            if lock_for(session, basket.id):
+                # Locked arbitrage is held to settlement; a news shift would trade its legs apart.
+                continue
             try:
                 cycle = news.active_cycle(session, account.id, basket.id)
                 if cycle is None and config.mode == "auto":

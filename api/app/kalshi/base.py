@@ -24,6 +24,39 @@ class MarketData:
     yes_ask: float | None = None
     resolution_rules: str | None = None
     resolution_deadline: datetime | None = None
+    # How the market relates to its siblings, for the arbitrage scanner (see app.arb_models.MarketTerms).
+    series_ticker: str | None = None
+    # Kalshi's strike: "greater" (YES above floor_strike), "less" (below cap_strike), "between", "custom", ...
+    strike_type: str | None = None
+    floor_strike: float | None = None
+    cap_strike: float | None = None
+    # The outcome a YES contract names, e.g. "Above 3.75%" or "Gavin Newsom".
+    outcome: str | None = None
+    # What the whole event asks, e.g. "Fed funds rate after Dec 2026 meeting?"
+    event_title: str | None = None
+    # At most one market in the event can resolve YES.
+    mutually_exclusive: bool = False
+    # Active markets in the event, counting ones the volume filter dropped.
+    event_size: int | None = None
+    # When the market closes early, e.g. "If this event occurs, the market will close the following 10am ET."
+    early_close: str | None = None
+    opened_at: datetime | None = None
+
+    # Fields stored beside the market rather than on it.
+    TERMS = (
+        "resolution_rules",
+        "resolution_deadline",
+        "series_ticker",
+        "strike_type",
+        "floor_strike",
+        "cap_strike",
+        "outcome",
+        "event_title",
+        "mutually_exclusive",
+        "event_size",
+        "early_close",
+        "opened_at",
+    )
 
 
 @dataclass(frozen=True)

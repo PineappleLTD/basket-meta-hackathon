@@ -4,8 +4,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
+from sqlalchemy.orm import object_session
 from sqlalchemy.orm.exc import StaleDataError
 
+from app.arb_models import lock_for
 from app.auth import CurrentUser
 from app.brokers import Broker, to_cents
 from app.db import SessionDep
@@ -67,6 +69,13 @@ def _account(request: Request, mode: AccountMode, session: SessionDep, user: Cur
 
 
 AccountDep = Annotated[Account, Depends(_account)]
+
+
+def _not_locked(basket: Basket) -> Basket:
+    """Automations trade by weight, which would break a locked arbitrage's matched legs."""
+    if lock_for(object_session(basket), basket.id):
+        raise HTTPException(409, "This basket is a locked arbitrage: it's held to settlement, so automations are off")
+    return basket
 
 
 def _ratio(a: float | None, b: float | None) -> float | None:
@@ -303,7 +312,7 @@ def get_automation(basket_id: int, account: AccountDep, session: SessionDep, use
 @router.put("/baskets/{basket_id}/automation", response_model=AutomationOut)
 def set_automation(basket_id: int, body: AutomationIn, account: AccountDep, session: SessionDep, user: CurrentUser):
     """Replace the basket's automations. They run on each sync; omitted fields turn off."""
-    basket = owned_basket(session, user, basket_id)
+    basket = _not_locked(owned_basket(session, user, basket_id))
     stake = svc.get_stake(account, basket)
     stake.auto_rebalance_drift = body.auto_rebalance_drift
     if body.recurring_amount is None:
@@ -350,7 +359,7 @@ def create_conditional_order(
     A limit buy is a buy at_or_below; a stop-loss is a sell at_or_below; a take-profit is a
     sell at_or_above. 409 if the NAV is already there: place a regular order instead.
     """
-    basket = owned_basket(session, user, basket_id)
+    basket = _not_locked(owned_basket(session, user, basket_id))
     nav = value_basket(basket).nav
     if triggered(body.condition, body.nav, nav):
         raise HTTPException(409, f"The NAV is already {nav:.2f}; place a regular order instead")

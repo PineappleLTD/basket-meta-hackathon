@@ -31,6 +31,14 @@ def _dollars(value: str | None) -> float | None:
     return float(value) if value else None
 
 
+def _number(value: object) -> float | None:
+    """A strike, which Kalshi sends as a number (or, on some markets, a numeric string)."""
+    try:
+        return float(value) if value is not None and value != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _yes_price(bid: float | None, ask: float | None, last: float | None) -> float | None:
     """Mid of a two-sided quote, else the last trade."""
     if bid is not None and ask is not None and 0 < bid <= ask < 1:
@@ -91,6 +99,7 @@ class KalshiClient:
             category = event.get("category")
             if category in self.exclude_categories:
                 continue
+            event_size = sum(1 for m in event.get("markets", []) if m.get("status") == "active")
             for m in event.get("markets", []):
                 if m["status"] != "active" or float(m["volume_fp"]) < self.min_volume:
                     continue
@@ -113,6 +122,16 @@ class KalshiClient:
                     resolution_rules="\n\n".join(v for v in (m.get("rules_primary"), m.get("rules_secondary")) if v),
                     # Stop news decisions by the trading cutoff, even if settlement is later.
                     resolution_deadline=datetime.fromisoformat(close_time) if close_time else None,
+                    series_ticker=event.get("series_ticker"),
+                    strike_type=m.get("strike_type"),
+                    floor_strike=_number(m.get("floor_strike")),
+                    cap_strike=_number(m.get("cap_strike")),
+                    outcome=m.get("yes_sub_title") or None,
+                    event_title=event.get("title") or None,
+                    mutually_exclusive=bool(event.get("mutually_exclusive")),
+                    event_size=event_size,
+                    early_close=m.get("early_close_condition") or None,
+                    opened_at=datetime.fromisoformat(m["open_time"]) if m.get("open_time") else None,
                 )
         return list(markets.values())
 

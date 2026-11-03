@@ -88,7 +88,7 @@ export interface TradeResult {
   account: Account;
 }
 
-export type OrderOrigin = "manual" | "recurring" | "auto_rebalance" | "conditional" | "settlement" | "news";
+export type OrderOrigin = "manual" | "recurring" | "auto_rebalance" | "conditional" | "settlement" | "news" | "arbitrage";
 
 export interface Order {
   id: number;

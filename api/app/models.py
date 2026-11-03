@@ -53,6 +53,8 @@ class OrderOrigin(StrEnum):
     CONDITIONAL = "conditional"
     SETTLEMENT = "settlement"
     NEWS = "news"
+    # Locking an opportunity from the arbitrage scanner.
+    ARBITRAGE = "arbitrage"
 
 
 class TriggerCondition(StrEnum):

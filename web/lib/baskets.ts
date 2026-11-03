@@ -1,3 +1,4 @@
+import type { Lock } from "./arbitrage";
 import { apiJson } from "./auth";
 import type { Market, PositionIn, Side } from "./theses";
 
@@ -22,6 +23,8 @@ export interface Basket {
   positions: Position[];
   cash_weight: number;
   cash_target_weight: number;
+  // Set when the basket is a locked arbitrage (held to settlement) rather than an index.
+  lock: Lock | null;
 }
 
 export const BASE_NAV = 100;

@@ -15,7 +15,7 @@ from app.db import SessionDep, init_db, make_engine
 from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
 from app.models import AccountMode, Market
-from app.routers import accounts, auth, baskets, markets, theses, news, exchange
+from app.routers import accounts, arbitrage, auth, baskets, markets, theses, news, exchange
 from app.services import exchange_execution
 from app.routers.common import sync_now
 from app.services.sync import refresh_live
@@ -105,6 +105,7 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
     app.include_router(accounts.router)
     app.include_router(news.router)
     app.include_router(exchange.router)
+    app.include_router(arbitrage.router)
 
     @app.get("/health", tags=["meta"])
     def health(session: SessionDep):

@@ -7,9 +7,9 @@ from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.brokers import Broker
-from app.kalshi import MarketSource
+from app.kalshi import MarketData, MarketSource
 from app.models import Account, AccountMode, Basket, BasketNav, BasketPosition, Holding, Market, MarketPrice, utcnow
-from app.services import automation
+from app.services import arbitrage, automation
 from app.news_models import NewsContract
 from app.services.baskets import value_basket
 from app.services.trading import settle, snapshot
@@ -37,9 +37,7 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int, now
     new = []
     updates = []
     for data in fetched:
-        listing = vars(data).copy()
-        listing.pop("resolution_rules", None)
-        listing.pop("resolution_deadline", None)
+        listing = {k: v for k, v in vars(data).items() if k not in MarketData.TERMS}
         market = existing.get(data.external_id)
         if market is None:
             market = Market(**listing, quoted_at=now)
@@ -66,6 +64,8 @@ def sync_markets(session: Session, source: MarketSource, backfill_days: int, now
                 contract = NewsContract(market_id=market.id)
                 session.add(contract)
             contract.rules, contract.deadline, contract.updated_at = data.resolution_rules, data.resolution_deadline, now
+    # Strikes, events and rule templates, for the arbitrage scanner.
+    arbitrage.store_terms(session, fetched, by_ticker, now)
     rows = [{"market_id": by_ticker[d.external_id].id, "ts": now, "yes_price": d.yes_price} for d in fetched]
     if rows:
         session.execute(insert(MarketPrice), rows)
@@ -161,10 +161,11 @@ def _resolve(session: Session, source: MarketSource, now: datetime) -> int:
 def refresh(
     session: Session, source: MarketSource, brokers: dict[AccountMode, Broker], backfill_days: int
 ) -> dict[str, int]:
-    """Sync markets, then place the automated trades that are due."""
+    """Sync markets, place the automated trades that are due, then scan for arbitrage."""
     now = utcnow()
     counts = sync_markets(session, source, backfill_days, now)
     counts["automated"] = automation.run(session, brokers, now)
+    counts["opportunities"] = arbitrage.safe_scan(session, brokers.get(AccountMode.PAPER), now)
     return counts
 
 

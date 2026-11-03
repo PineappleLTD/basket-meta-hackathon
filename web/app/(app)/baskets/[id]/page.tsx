@@ -10,6 +10,7 @@ import { ExchangePanel } from "@/components/ExchangePanel";
 import { ClimateSettingsCard } from "@/components/ClimateSettingsCard";
 import { useBaskets } from "@/components/BasketsContext";
 import { InfoTip } from "@/components/InfoTip";
+import { LockPanel } from "@/components/LockPanel";
 import { NavChart } from "@/components/NavChart";
 import { OrderHistory } from "@/components/OrderHistory";
 import { PositionTable } from "@/components/PositionTable";
@@ -106,8 +107,10 @@ export default function Page() {
 
   // The news climate is read once per basket; the classifier refreshes it on its own schedule.
   const basketId = basket?.id;
+  // A locked arbitrage is held to settlement, so news never shifts it.
+  const locked = !!basket?.lock;
   async function loadClimate() {
-    if (!basketId) return;
+    if (!basketId || locked) return;
     try {
       const next = await getClimate(basketId);
       setClimate(next);
@@ -121,7 +124,7 @@ export default function Page() {
     if (!basket) return;
     setClimate(null);
     loadClimate();
-  }, [basketId]);
+  }, [basketId, locked]);
 
   async function changeClimateSettings(next: ClimateSettings) {
     if (!basket || savingClimate) return;
@@ -204,7 +207,8 @@ export default function Page() {
     const skip = skipped.get(key);
     if (skip) parts.push(<span className="pt-skip">Skipped: {skip.reason}</span>);
     const holding = holdings.get(key);
-    if (holding)
+    if (holding && locked) parts.push(`You hold ${holding.contracts}`);
+    else if (holding)
       parts.push(
         `You hold ${holding.contracts} · ${pct(holding.weight)} of your holding (target ${pct(holding.target_weight)})`,
       );
@@ -240,8 +244,12 @@ export default function Page() {
       <div className="bd-in">
         <header className="bd-head">
           <p className="bd-meta">
-            Created {date(basket.created_at)}
-            {nextClose && <> · First market closes {date(nextClose)}</>}
+            {basket.lock ? "Locked" : "Created"} {date(basket.created_at)}
+            {basket.lock?.closes_at ? (
+              <> · Settles by {date(basket.lock.closes_at)}</>
+            ) : (
+              nextClose && <> · First market closes {date(nextClose)}</>
+            )}
           </p>
           <h1 className="bd-title">
             <BasketName name={name} state={titles[basket.id]} />
@@ -259,6 +267,20 @@ export default function Page() {
 
         <div className="bd-grid">
           <div className="bd-main">
+            {basket.lock ? (
+              <section aria-label="What's locked">
+                <div className="bd-quote">
+                  <span className="bd-nav">{usd(basket.lock.payout)}</span>
+                  <span className="up">{usd(basket.lock.profit)} locked profit</span>
+                  <span className="bd-when">guaranteed at settlement, for {usd(basket.lock.cost)} paid</span>
+                  <InfoTip>
+                    One set is one contract of every leg below, and pays at least {usd(basket.lock.payout_per_set)} however
+                    the markets resolve. The total is the sets locked times that.
+                  </InfoTip>
+                </div>
+                <p className="bd-foot">{basket.lock.explanation}</p>
+              </section>
+            ) : (
             <section aria-label="Performance">
               <div className="bd-quote">
                 <span className="bd-nav">{shown.toFixed(2)}</span>
@@ -279,6 +301,7 @@ export default function Page() {
                 onHover={setHover}
               />
             </section>
+            )}
 
             <section className="bd-section">
               <h2>
@@ -305,6 +328,7 @@ export default function Page() {
               {basket.cash_target_weight > 0 && <p className="bd-foot">Saved cash target: {pct(basket.cash_target_weight, 1)} · Current index cash weight: {pct(basket.cash_weight, 1)}</p>}
             </section>
 
+            {!locked && (
             <ClimatePanel
               basketId={basket.id}
               positions={basket.positions}
@@ -314,6 +338,7 @@ export default function Page() {
               error={climateError}
               onApplied={() => { setPreview(null); loadClimate(); loadActivity(); refreshAccount(); loadBasket(); }}
             />
+            )}
 
             <section className="bd-section">
               <h2>
@@ -340,7 +365,13 @@ export default function Page() {
           </div>
 
           <aside className="bd-side">
-            {account ? (
+            {basket.lock ? (
+              account ? (
+                <LockPanel basket={basket} held={held} onTraded={traded} onUnauthorized={() => router.replace("/login")} />
+              ) : (
+                !error && <p className="bd-status">{accountError ?? "Loading account…"}</p>
+              )
+            ) : account ? (
               <>
                 <TradePanel
                   basket={basket}
@@ -362,14 +393,18 @@ export default function Page() {
             ) : (
               !error && <p className="bd-status">{accountError ?? "Loading account…"}</p>
             )}
-            <ClimateSettingsCard
-              settings={climateSettings}
-              regime={climate?.regime ?? null}
-              onChange={changeClimateSettings}
-              busy={savingClimate}
-              error={climateError}
-            />
-            <ExchangePanel basketId={basket.id} />
+            {!locked && (
+              <>
+                <ClimateSettingsCard
+                  settings={climateSettings}
+                  regime={climate?.regime ?? null}
+                  onChange={changeClimateSettings}
+                  busy={savingClimate}
+                  error={climateError}
+                />
+                <ExchangePanel basketId={basket.id} />
+              </>
+            )}
           </aside>
         </div>
       </div>
