@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { UnauthorizedError } from "@/lib/auth";
 import { previewSell, sellBasket, type Account, type BasketHoldings } from "@/lib/accounts";
-import { KIND_LABEL } from "@/lib/arbitrage";
+import { ARBITRAGE_ENABLED, KIND_LABEL } from "@/lib/arbitrage";
 import type { Basket } from "@/lib/baskets";
 import { date, errorText, usd } from "@/lib/format";
 
@@ -77,9 +77,11 @@ export function LockPanel({ basket, held, onTraded, onUnauthorized }: Props) {
       <p className="invest-fine lock-why">{lock.explanation}</p>
       {lock.closes_at && <p className="invest-fine">Settles by {date(lock.closes_at)}; the payout lands as cash then.</p>}
       {heldSets === 0 && <p className="invest-fine">Nothing is held now: the lock was sold or has paid out (see Activity).</p>}
-      <Link className="btn ticket-btn lock-add" href="/arbitrage">
-        Add sets from the scanner
-      </Link>
+      {ARBITRAGE_ENABLED && (
+        <Link className="btn ticket-btn lock-add" href="/arbitrage">
+          Add sets from the scanner
+        </Link>
+      )}
       {heldSets > 0 && (
         <button type="button" className="text-btn lock-unwind" onClick={unwind} disabled={busy}>
           {busy ? "Pricing…" : "Unwind: sell every leg now"}

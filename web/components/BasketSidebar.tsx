@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { BasketName } from "@/components/BasketName";
 import { useBaskets } from "@/components/BasketsContext";
 import { SidebarResizer } from "@/components/SidebarResizer";
+import { ARBITRAGE_ENABLED } from "@/lib/arbitrage";
 import { BASE_NAV } from "@/lib/baskets";
 import { signedPct, usd } from "@/lib/format";
 
@@ -19,14 +20,16 @@ export function BasketSidebar() {
         <button type="button" className="btn new-basket" onClick={newDraft}>
           <span aria-hidden="true">+</span> new basket
         </button>
-        <Link
-          href="/arbitrage"
-          className={`sidebar-tool${pathname === "/arbitrage" ? " active" : ""}`}
-          aria-current={pathname === "/arbitrage" ? "page" : undefined}
-        >
-          <span>Arbitrage scanner</span>
-          <span className="mono">logic gaps</span>
-        </Link>
+        {ARBITRAGE_ENABLED && (
+          <Link
+            href="/arbitrage"
+            className={`sidebar-tool${pathname === "/arbitrage" ? " active" : ""}`}
+            aria-current={pathname === "/arbitrage" ? "page" : undefined}
+          >
+            <span>Arbitrage scanner</span>
+            <span className="mono">logic gaps</span>
+          </Link>
+        )}
         <div className="sidebar-head">
           <span className="eyebrow">my baskets</span>
           {baskets && <span className="mono">{baskets.length}</span>}

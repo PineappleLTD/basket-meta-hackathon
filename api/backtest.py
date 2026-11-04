@@ -108,6 +108,9 @@ def generate(session: Session, settings: Settings, theses: list[str], max_positi
         if thesis in cached:
             continue
         print(f"[{i}/{len(theses)}] {thesis}", flush=True)
+        # Model calls take a while and the Supabase pooler drops idle connections, so
+        # don't hold one between theses; the next query checks out a fresh one.
+        session.close()
         try:
             selection = thesis_svc.select_markets(session, llm, thesis, max_positions)
         except (thesis_svc.ThesisError, LLMError) as e:
