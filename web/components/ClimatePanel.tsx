@@ -70,14 +70,14 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
   }
 
   return (
-    <section className="bd-section clim">
-      <h2>
-        News and rebalancing <span className="tag">Paper only · Experimental</span>
-        <InfoTip>
+    <section className="bd-panel clim" role="tabpanel" aria-label="News climate">
+      <div className="bd-panel-head">
+        <span className="tag">Paper only · Experimental</span>
+        <InfoTip end>
           News is checked against the rules for each market in this basket. A rebalance can reduce an affected holding
           and move the proceeds to other existing holdings after its planned sales finish.
         </InfoTip>
-      </h2>
+      </div>
 
       {!climate ? (
         <p className={error ? "auth-error" : "bd-foot"} role={error ? "alert" : undefined}>{error ?? "Loading saved assessments…"}</p>
@@ -86,24 +86,8 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
           {error && <p className="auth-error" role="alert">
             News status may be out of date. Showing the previous update from {dateTime(climate.as_of)}.
           </p>}
-          <div className="clim-block" role="status" aria-live="polite">
-            <h3>News monitoring</h3>
-            <p className="bd-foot">{error ? "Status is out of date." : MONITOR_NOTES[climate.monitoring?.status ?? ""] ?? "Monitoring status is unavailable."}</p>
-            {climate.monitoring?.checked_at && <p className="bd-foot">Last checked: {dateTime(climate.monitoring.checked_at)}</p>}
-            <p className="bd-foot">Recent assessments for this basket: {climate.signals.length}.</p>
-            <p className="bd-foot">{RESPONSE_NOTES[settings.mode]}</p>
-            {(climate.monitoring || error) && <details className="bd-foot">
-              <summary>Monitoring details</summary>
-              {error && <p>Refresh error: {error}</p>}
-              {climate.monitoring && <>
-                <p>{climate.monitoring.note}</p>
-                <p>Request allowance used: discovery {climate.monitoring.requests.discovery.used}/{climate.monitoring.requests.discovery.limit}; evidence {climate.monitoring.requests.evidence.used}/{climate.monitoring.requests.evidence.limit}. Shared across baskets and app restarts; retries count.</p>
-              </>}
-            </details>}
-          </div>
           {climate.signals.length > 0 && <RegimeStrip climate={climate} />}
           {climate.missing_rules.length > 0 && <p className="bd-foot">{climate.missing_rules.length} positions need exact exchange rules before they can be scored. Sync market data to load them.</p>}
-          <p className="bd-foot">Reserved basket cash: {usd(climate.basket_cash)}. New markets and unheld outcome sides are excluded.</p>
           {climate.cycle && <div className="clim-block" role="status">
             <h3>Paper rebalance: {climate.cycle.status.toLowerCase()}</h3>
             <p className="bd-foot">{climate.cycle.note}</p>
@@ -119,6 +103,20 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
             reason={proposalReason} pending={!!climate.cycle && ["SELLING", "BUYING", "BLOCKED", "EXPIRED", "CANCELLED"].includes(climate.cycle.status)}
             shifts={shifts} settings={settings} signals={climate.signals} question={question} onApplied={onApplied} />
           {climate.signals.length > 0 && <Signals signals={climate.signals} question={question} />}
+          <details className="clim-diag">
+            <summary>Monitoring details</summary>
+            <div role="status" aria-live="polite">
+              <p className="bd-foot">
+                <b>{error ? "Status is out of date." : MONITOR_NOTES[climate.monitoring?.status ?? ""] ?? "Monitoring status is unavailable."}</b>
+                {climate.monitoring && <> {climate.monitoring.note}</>}
+              </p>
+              {error && <p className="bd-foot">Refresh error: {error}</p>}
+              {climate.monitoring?.checked_at && <p className="bd-foot">Last news check: {dateTime(climate.monitoring.checked_at)}</p>}
+              <p className="bd-foot">Recent assessments for this basket: {climate.signals.length}. {RESPONSE_NOTES[settings.mode]}</p>
+              {climate.monitoring && <p className="bd-foot">Request allowance used: discovery {climate.monitoring.requests.discovery.used}/{climate.monitoring.requests.discovery.limit}; evidence {climate.monitoring.requests.evidence.used}/{climate.monitoring.requests.evidence.limit}. Shared across baskets and app restarts; retries count.</p>}
+            </div>
+            <p className="bd-foot">Reserved basket cash: {usd(climate.basket_cash)}. New markets and unheld outcome sides are excluded.</p>
+          </details>
         </>
       )}
     </section>

@@ -74,6 +74,7 @@ export default function Page() {
   const [climateSettings, setClimateSettings] = useState<ClimateSettings>(DEFAULT_CLIMATE_SETTINGS);
   const [climateError, setClimateError] = useState<string | null>(null);
   const [savingClimate, setSavingClimate] = useState(false);
+  const [tab, setTab] = useState<"holdings" | "climate" | "activity">("holdings");
 
   function fail(err: unknown) {
     if (err instanceof UnauthorizedError) router.replace("/login");
@@ -231,6 +232,8 @@ export default function Page() {
     );
   }
 
+  // A locked basket has no news tab; fall back to holdings.
+  const view = locked && tab === "climate" ? "holdings" : tab;
   const shown = hover?.nav ?? basket.nav;
   const change = shown / BASE_NAV - 1;
   const now = Date.now();
@@ -303,11 +306,23 @@ export default function Page() {
             </section>
             )}
 
-            <section className="bd-section">
-              <h2>
-                Holdings{" "}
-                <span className="bd-count">{basket.positions.length}</span>
-              </h2>
+            <div className="bd-tabs" role="tablist" aria-label="Basket details">
+              <Tab id="holdings" current={view} onSelect={setTab} count={basket.positions.length}>Holdings</Tab>
+              {!locked && <Tab id="climate" current={view} onSelect={setTab}>News climate</Tab>}
+              <Tab id="activity" current={view} onSelect={setTab} count={orders.length}>Activity</Tab>
+            </div>
+
+            {view === "holdings" && (
+            <section className="bd-panel" role="tabpanel" aria-label="Holdings">
+              <div className="bd-panel-head">
+                <Categories basket={basket} />
+                <InfoTip end>
+                  A Yes contract pays $1 if the event happens; a No contract pays $1 if it doesn&rsquo;t. Price is
+                  today&rsquo;s cost per contract. Market weights and cash add up to 100%.
+                  {basket.cash_target_weight > 0 &&
+                    ` Saved cash target ${pct(basket.cash_target_weight, 1)}; current index cash weight ${pct(basket.cash_weight, 1)}.`}
+                </InfoTip>
+              </div>
               <PositionTable
                 rows={basket.positions.map((p) => ({
                   market: p.market,
@@ -317,18 +332,10 @@ export default function Page() {
                   note: note(p.market.id, p.side, p.market),
                 }))}
               />
-              <p className="bd-foot">
-                <Categories basket={basket} />
-              </p>
-              <p className="bd-foot">
-                A Yes contract pays $1 if the event happens; a No contract pays
-                $1 if it doesn&rsquo;t. Price is today&rsquo;s cost per
-                contract. Market weights and cash add up to 100%.
-              </p>
-              {basket.cash_target_weight > 0 && <p className="bd-foot">Saved cash target: {pct(basket.cash_target_weight, 1)} · Current index cash weight: {pct(basket.cash_weight, 1)}</p>}
             </section>
+            )}
 
-            {!locked && (
+            {view === "climate" && (
             <ClimatePanel
               basketId={basket.id}
               positions={basket.positions}
@@ -340,12 +347,11 @@ export default function Page() {
             />
             )}
 
-            <section className="bd-section">
-              <h2>
-                Activity <span className="bd-count">{orders.length}</span>
-              </h2>
+            {view === "activity" && (
+            <section className="bd-panel" role="tabpanel" aria-label="Activity">
               <OrderHistory orders={orders} question={question} />
             </section>
+            )}
 
             <div className="bd-danger">
               <button
@@ -383,6 +389,7 @@ export default function Page() {
                   onUnauthorized={() => router.replace("/login")}
                   newsPending={!!climate?.cycle && ["SELLING", "BUYING"].includes(climate.cycle.status)}
                 />
+                <p className="bd-side-label">Settings</p>
                 <AutomationPanel
                   basketId={basket.id}
                   nav={basket.nav}
@@ -412,7 +419,7 @@ export default function Page() {
   );
 }
 
-// Share of the basket in each category, largest first, e.g. "Politics 42% · Macro 31%".
+// Share of the basket in each category, largest first.
 function Categories({ basket }: { basket: Basket }) {
   const byCategory = new Map<string, number>();
   for (const p of basket.positions) {
@@ -423,6 +430,35 @@ function Categories({ basket }: { basket: Basket }) {
   const rows = sorted.slice(0, TOP_CATEGORIES);
   const rest = sorted.slice(TOP_CATEGORIES).reduce((s, [, w]) => s + w, 0);
   if (rest > 0) rows.push(["Other", rest]);
-  return <>By category: {rows.map(([c, w]) => `${c} ${pct(w)}`).join(" · ")}</>;
+  if (basket.cash_weight > 0) rows.push(["Cash", basket.cash_weight]);
+  return (
+    <ul className="bd-cats" aria-label="Allocation by category">
+      {rows.map(([c, w]) => (
+        <li key={c}>
+          {c} <span className="mono">{pct(w)}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
+function Tab<T extends string>({
+  id,
+  current,
+  onSelect,
+  count,
+  children,
+}: {
+  id: T;
+  current: T;
+  onSelect: (id: T) => void;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <button type="button" role="tab" className="bd-tab" aria-selected={current === id} onClick={() => onSelect(id)}>
+      {children}
+      {count !== undefined && <span className="bd-count">{count}</span>}
+    </button>
+  );
+}

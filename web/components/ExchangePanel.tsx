@@ -33,14 +33,13 @@ export function ExchangePanel({ basketId }: { basketId: number }) {
   }
   const pending = !!state?.cycle && ["SELLING", "BUYING"].includes(state.cycle.status);
   const needsReview = !!state?.cycle && ["EXPIRED", "CANCELLED", "BLOCKED"].includes(state.cycle.status);
-  return <section className="ticket auto" aria-label="Exchange execution">
-    <div className="ticket-head"><h2>Exchange execution</h2><span className="tag">{status?.enabled_for_user ? status.environment : "Off"}</span></div>
+  return <details className="ticket auto fold" aria-label="Exchange execution" open={needsReview || undefined}>
+    <summary className="ticket-head"><h2>Exchange execution</h2><span className="ticket-mode">{status?.enabled_for_user ? `${status.environment}${state?.armed ? " · armed" : ""}` : "Off"}</span></summary>
     {!status?.enabled_for_user ? <p className="invest-fine">Exchange orders are disabled. Use paper trading to test the news response.</p> : !state ? <>
       <p className="invest-fine">Connect the configured subaccount to this ETF. Only its existing markets and held sides can be imported. Connection alone does not enable automation.</p>
       <button type="button" className="btn auto-save" disabled={busy} onClick={() => act(() => connectExchange(basketId))}>Connect ETF</button>
     </> : <>
-      <p className="invest-fine">{status.environment === "production" ? "Real exchange account" : "Demo exchange account"} · Automation {state.armed ? "on" : "off"}. Purchases wait until every planned sale is confirmed.</p>
-      <p className="invest-fine">Reserved ETF cash: {usd(state.basket_cash)}. Returns are measured from connection; historical acquisition profit is not inferred.</p>
+      <p className="invest-fine">{status.environment === "production" ? "Real exchange account" : "Demo exchange account"} · Automation {state.armed ? "on" : "off"} · Reserved cash {usd(state.basket_cash)}</p>
       {state.cycle && <div role="status"><p className="invest-fine">{state.cycle.status.toLowerCase()}: {state.cycle.note}</p></div>}
       {state.cycle && <p className="invest-fine">Original sales: {state.cycle.sells.reduce((n, leg) => n + leg.filled, 0)}/{state.cycle.sells.reduce((n, leg) => n + leg.count, 0)} confirmed.</p>}
       {state.orders.length > 0 && <ul className="clim-feed">{state.orders.map(o => <li key={o.client_id}>
@@ -56,5 +55,5 @@ export function ExchangePanel({ basketId }: { basketId: number }) {
       </>}
     </>}
     {error && <p className="auth-error" role="alert">{error}</p>}
-  </section>;
+  </details>;
 }

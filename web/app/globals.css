@@ -494,7 +494,52 @@ a { color: inherit; text-decoration: none; }
 .bd-count { margin-left: 4px; font-weight: 400; color: var(--muted); }
 .bd-foot { max-width: 680px; margin-top: 12px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .bd-foot .text-btn { font-size: inherit; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
-.bd-danger { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); }
+.bd-danger { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-top: 56px; }
+.bd-danger .text-btn { font-size: 13px; color: var(--faint); }
+
+/* Tabs under the chart: holdings, news climate, activity */
+.bd-tabs { display: flex; gap: 28px; margin-top: 40px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.bd-tab {
+  position: relative; display: inline-flex; align-items: baseline; gap: 6px; height: 40px; padding: 0; border: 0; background: none;
+  color: var(--muted); font: 500 14px var(--sans); white-space: nowrap; cursor: pointer; transition: color 0.15s;
+}
+.bd-tab:hover { color: var(--ink); }
+.bd-tab[aria-selected="true"] { color: var(--ink); }
+.bd-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--ink); }
+.bd-tab .bd-count { margin-left: 0; font: 400 12px var(--mono); color: var(--faint); }
+.bd-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bd-panel { padding-top: 20px; }
+.bd-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
+.bd-panel .pt { margin-top: 12px; }
+.bd-panel .hist { margin-top: 0; }
+.bd-panel .clim-regime { margin-top: 12px; }
+.bd-cats { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; }
+.bd-cats li { padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.bd-cats .mono { margin-left: 2px; font-size: 11px; color: var(--ink); }
+
+/* Sidebar settings: collapsed cards with their status in the header */
+.bd-side-label { margin: 24px 0 8px; font: 400 11px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.ticket.fold { padding: 0; }
+.ticket.fold + .ticket.fold, .ticket.fold + .ticket.auto { margin-top: 8px; }
+.bd-side-label + .ticket.fold { margin-top: 0; }
+.ticket.fold > summary { margin: 0; padding: 14px 16px; cursor: pointer; list-style: none; user-select: none; }
+.ticket.fold > summary::-webkit-details-marker { display: none; }
+.ticket.fold > summary h2 { font-size: 14px; font-weight: 500; }
+.ticket.fold > summary .ticket-mode { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 12px; }
+.ticket.fold > summary::after { content: ""; flex: none; width: 6px; height: 6px; margin: 0 2px 0 4px; border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); transform: translateY(-2px) rotate(45deg); transition: transform 0.15s; align-self: center; }
+.ticket.fold[open] > summary::after { transform: translateY(1px) rotate(-135deg); }
+.ticket.fold > summary:hover h2 { color: var(--accent); }
+.ticket.fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+.ticket.fold[open] > summary { border-bottom: 1px solid var(--line); }
+.ticket.fold > :not(summary) { margin-left: 16px; margin-right: 16px; }
+.ticket.fold > :nth-child(2) { margin-top: 14px; }
+.ticket.fold > :last-child { margin-bottom: 16px; }
+.ticket.fold .auto-triggers { padding-top: 14px; }
+
+.clim-diag { margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--line); }
+.clim-diag summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.clim-diag summary:hover { color: var(--ink); }
+.clim-diag b { font-weight: 500; color: var(--ink); }
 
 /* Trade ticket: the one boxed thing on the page */
 .ticket { padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
