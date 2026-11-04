@@ -243,7 +243,8 @@ class AgentTests(unittest.TestCase):
         self.assertTrue(result.content)
         self.assertEqual(captured[0]['host'], 'api.meta.ai')
         self.assertEqual(captured[0]['path'], '/v1/responses')
-        self.assertEqual(captured[0]['payload']['max_output_tokens'], 4096)
+        self.assertEqual(captured[0]['payload']['max_output_tokens'], 8192)
+        self.assertEqual(captured[0]['payload']['reasoning']['effort'], 'low')
         self.assertFalse(captured[0]['payload']['store'])
 
     def test_model_budget_stops_a_tool_loop(self):
@@ -255,6 +256,83 @@ class AgentTests(unittest.TestCase):
                            model_budget=2, tool_budget=10, model=fake, clock=lambda: NOW)
         self.assertEqual(fake.i, 2)
         self.assertEqual(result['staged'], [])
+
+    def test_discovery_provider_failures_identify_safe_category_and_http_status(self):
+        ident = self.store.record_article(article())
+        for status, category in [(400, 'invalid_request'), (401, 'authentication'),
+                                 (403, 'authentication'), (429, 'rate_limit'),
+                                 (503, 'provider_unavailable')]:
+            with self.subTest(status=status):
+                def failed(request):
+                    return httpx.Response(status, json={'error': {
+                        'message': 'provider-secret Bearer secret-auth-token',
+                        'type': 'provider-secret',
+                    }})
+                with httpx.Client(transport=httpx.MockTransport(failed)) as client:
+                    model = make_model(http_client=client, api_key='secret-auth-token')
+                    with self.assertRaisesRegex(AgentError, rf'{category}.*HTTP {status}') as caught:
+                        run_agent(self.store, [TOPIC], [{'article_id': ident, 'topic_ids': ['fed']}],
+                                  model_budget=1, tool_budget=2, model=model, clock=lambda: NOW)
+                self.assertNotIn('provider-secret', str(caught.exception))
+                self.assertNotIn('secret-auth-token', str(caught.exception))
+                self.assertIsNone(caught.exception.__cause__)
+
+    def test_explicit_discovery_configuration_overrides_installed_environment(self):
+        captured = []
+        def respond(request):
+            captured.append(request)
+            return httpx.Response(200, json={
+                'id': 'resp_config', 'object': 'response', 'created_at': 1,
+                'model': 'configured-model', 'status': 'completed',
+                'output': [{'id': 'msg_config', 'type': 'message', 'status': 'completed',
+                            'role': 'assistant', 'content': [{'type': 'output_text',
+                            'text': 'Ready.', 'annotations': []}]}],
+            })
+        with patch.dict('os.environ', {'MODEL_API_KEY': 'wrong-key', 'MUSE_MODEL': 'wrong-model'}):
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+                model = make_model(http_client=client, api_key='configured-key',
+                                   model_name='configured-model', timeout=3)
+                model.invoke('Local configuration check.')
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0].headers['Authorization'], 'Bearer configured-key')
+        self.assertEqual(json.loads(captured[0].content)['model'], 'configured-model')
+
+    def test_discovery_network_failures_do_not_echo_transport_details(self):
+        ident = self.store.record_article(article())
+        for failure, category in [(httpx.ReadTimeout, 'timeout'),
+                                  (httpx.ConnectError, 'connection')]:
+            with self.subTest(category=category):
+                def failed(request):
+                    raise failure('provider-secret', request=request)
+                with httpx.Client(transport=httpx.MockTransport(failed)) as client:
+                    model = make_model(http_client=client, api_key='secret-auth-token')
+                    with self.assertRaisesRegex(AgentError, category) as caught:
+                        run_agent(self.store, [TOPIC], [{'article_id': ident, 'topic_ids': ['fed']}],
+                                  model_budget=1, tool_budget=2, model=model, clock=lambda: NOW)
+                self.assertNotIn('provider-secret', str(caught.exception))
+                self.assertNotIn('secret-auth-token', str(caught.exception))
+
+    def test_discovery_failure_preserves_work_staged_before_followup_request(self):
+        ident = self.store.record_article(article())
+        calls = []
+        def respond(request):
+            calls.append(request)
+            if len(calls) > 1:
+                return httpx.Response(503, json={'error': {'message': 'provider-secret'}})
+            return httpx.Response(200, json={
+                'id': 'resp_stage', 'object': 'response', 'created_at': 1,
+                'model': 'muse-spark-1.3', 'status': 'completed',
+                'output': [{'id': 'fc_stage', 'type': 'function_call', 'call_id': 'call_stage',
+                            'name': 'stage_update', 'status': 'completed', 'arguments': json.dumps({
+                                'article_id': ident, 'topic_id': 'fed', 'reason': 'Relevant rate update.'})}],
+            })
+        with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            model = make_model(http_client=client, api_key='secret-auth-token')
+            with self.assertRaisesRegex(AgentError, 'provider_unavailable.*HTTP 503'):
+                run_agent(self.store, [TOPIC], [{'article_id': ident, 'topic_ids': ['fed']}],
+                          model_budget=2, tool_budget=2, model=model, clock=lambda: NOW)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.store.pending(), [ident])
 
     def test_portfolio_schema_loads_both_platforms_without_trading_fields(self):
         path = Path(self.temp.name) / 'portfolio.json'

@@ -22,6 +22,25 @@ const REGIMES: [Regime, string][] = [
 ];
 // Signals kept on screen before "Show all".
 const SHOWN_SIGNALS = 5;
+const RESPONSE_NOTES: Record<ClimateSettings["mode"], string> = {
+  off: "Off: news will not change this basket's holdings.",
+  suggest: "Suggestions: review proposed changes before applying them.",
+  auto: "Automatic: the app can rebalance paper holdings when news warrants a change.",
+};
+const MONITOR_NOTES: Record<string, string> = {
+  STARTING: "Starting news checks…",
+  CHECKING: "Checking for relevant news…",
+  MONITORING: "Watching for news.",
+  DEGRADED: "Some news sources are unavailable. Checks continue with the available sources.",
+  WAITING_FOR_BASKETS: "Waiting for a saved basket with open markets and complete contract rules.",
+  WAITING_FOR_KEY: "Setup needed: add the news service API key to start checks.",
+  BUDGET_EXHAUSTED: "Paused: the news request allowance is used up. The app owner can increase it to resume.",
+  PAUSED_ERROR: "News checks are paused. See the details below for what needs attention.",
+  DISABLED: "News checks are turned off.",
+  STANDBY: "Waiting for the active news monitor.",
+  STOPPED: "News checks have stopped.",
+  UNAVAILABLE: "The news service is not responding. Check that the app's server is running.",
+};
 
 interface Props {
   basketId: number;
@@ -36,6 +55,9 @@ interface Props {
 // What the news classifier is reading around this basket, and the weights it would move toward.
 export function ClimatePanel({ basketId, climate, settings, question, error, onApplied }: Props) {
   const shifts = climate?.proposal.shifts ?? [];
+  const proposalReason = climate?.proposal.reason === "No new accepted adverse evidence" && climate.signals.length === 0
+    ? "No recent news has been assessed for this basket yet."
+    : climate?.proposal.reason ?? null;
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   async function review() {
@@ -50,10 +72,10 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
   return (
     <section className="bd-section clim">
       <h2>
-        News climate <span className="tag">Paper only · Experimental</span>
+        News and rebalancing <span className="tag">Paper only · Experimental</span>
         <InfoTip>
-          Muse extracts evidence and Ridge scores its effect on the side held. Accepted adverse evidence can reduce a
-          holding and move confirmed proceeds among this ETF&rsquo;s existing positions. Trading accuracy still needs independent validation.
+          News is checked against the rules for each market in this basket. A rebalance can reduce an affected holding
+          and move the proceeds to other existing holdings after its planned sales finish.
         </InfoTip>
       </h2>
 
@@ -61,13 +83,25 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
         <p className={error ? "auth-error" : "bd-foot"} role={error ? "alert" : undefined}>{error ?? "Loading saved assessments…"}</p>
       ) : (
         <>
-          {climate.monitoring && <div className="clim-block" role="status" aria-live="polite">
-            <h3>News monitoring: {climate.monitoring.status.toLowerCase().replaceAll("_", " ")}</h3>
-            <p className="bd-foot">{climate.monitoring.note}</p>
-            {climate.monitoring.checked_at && <p className="bd-foot">Last news check: {dateTime(climate.monitoring.checked_at)}</p>}
-            <p className="bd-foot">Request allowance used: discovery {climate.monitoring.requests.discovery.used}/{climate.monitoring.requests.discovery.limit}; evidence {climate.monitoring.requests.evidence.used}/{climate.monitoring.requests.evidence.limit}. Shared across ETFs and app restarts; retries count.</p>
-          </div>}
-          <RegimeStrip climate={climate} />
+          {error && <p className="auth-error" role="alert">
+            News status may be out of date. Showing the previous update from {dateTime(climate.as_of)}.
+          </p>}
+          <div className="clim-block" role="status" aria-live="polite">
+            <h3>News monitoring</h3>
+            <p className="bd-foot">{error ? "Status is out of date." : MONITOR_NOTES[climate.monitoring?.status ?? ""] ?? "Monitoring status is unavailable."}</p>
+            {climate.monitoring?.checked_at && <p className="bd-foot">Last checked: {dateTime(climate.monitoring.checked_at)}</p>}
+            <p className="bd-foot">Recent assessments for this basket: {climate.signals.length}.</p>
+            <p className="bd-foot">{RESPONSE_NOTES[settings.mode]}</p>
+            {(climate.monitoring || error) && <details className="bd-foot">
+              <summary>Monitoring details</summary>
+              {error && <p>Refresh error: {error}</p>}
+              {climate.monitoring && <>
+                <p>{climate.monitoring.note}</p>
+                <p>Request allowance used: discovery {climate.monitoring.requests.discovery.used}/{climate.monitoring.requests.discovery.limit}; evidence {climate.monitoring.requests.evidence.used}/{climate.monitoring.requests.evidence.limit}. Shared across baskets and app restarts; retries count.</p>
+              </>}
+            </details>}
+          </div>
+          {climate.signals.length > 0 && <RegimeStrip climate={climate} />}
           {climate.missing_rules.length > 0 && <p className="bd-foot">{climate.missing_rules.length} positions need exact exchange rules before they can be scored. Sync market data to load them.</p>}
           <p className="bd-foot">Reserved basket cash: {usd(climate.basket_cash)}. New markets and unheld outcome sides are excluded.</p>
           {climate.cycle && <div className="clim-block" role="status">
@@ -82,9 +116,9 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
           </div>}
           {climate.topics.length > 0 && <Topics climate={climate} />}
           <Proposal key={climate.proposal.id} basketId={basketId} proposalId={climate.proposal.id}
-            reason={climate.proposal.reason} pending={!!climate.cycle && ["SELLING", "BUYING", "BLOCKED", "EXPIRED", "CANCELLED"].includes(climate.cycle.status)}
+            reason={proposalReason} pending={!!climate.cycle && ["SELLING", "BUYING", "BLOCKED", "EXPIRED", "CANCELLED"].includes(climate.cycle.status)}
             shifts={shifts} settings={settings} signals={climate.signals} question={question} onApplied={onApplied} />
-          <Signals signals={climate.signals} question={question} />
+          {climate.signals.length > 0 && <Signals signals={climate.signals} question={question} />}
         </>
       )}
     </section>
@@ -184,17 +218,17 @@ function Proposal({
   return (
     <div className="clim-block">
       <h3>
-        Proposed reweight
+        Suggested changes
         {settings.mode !== "off" && moved.length > 0 && <span className="bd-count">{pct(traded, 1)} turnover</span>}
       </h3>
 
       {settings.mode === "off" ? (
-        <p className="bd-foot">Climate reweighting is off. Turn it on in the sidebar to see suggested weights.</p>
+        <p className="bd-foot">News response is off. Choose Review first or Automatic in the sidebar to enable it.</p>
       ) : pending ? (
         <p className="bd-foot">The saved rebalance must finish or be reviewed before another starts. Purchases wait for all planned sales.</p>
       ) : moved.length === 0 || dismissed || reason ? (
         <p className="bd-foot">
-          {dismissed ? "Dismissed. A new proposal appears when the evidence changes." : reason ?? "No accepted adverse evidence requires a reduction."}
+          {dismissed ? "Dismissed. New suggestions appear when the news changes." : reason === "No new accepted adverse evidence" ? "No new assessments call for a weight change." : reason ?? "No assessed news calls for a reduction."}
         </p>
       ) : (
         <>
@@ -236,7 +270,7 @@ function Proposal({
           </ul>
 
           {settings.mode === "auto" ? (
-            <p className="bd-foot">Auto mode starts the paper rebalance at the next price update. It waits for every planned sale before purchasing existing ETF positions.</p>
+            <p className="bd-foot">Automatic mode starts this paper rebalance at the next price update. Planned sales finish before other holdings are bought.</p>
           ) : applied ? (
             <p className="bd-foot">
               <span className="invest-done">Started {dateTime(applied)}.</span> Follow the confirmed sale counts above.
@@ -250,7 +284,7 @@ function Proposal({
                 Dismiss
               </button>
               <span className="invest-fine">
-                Capped at {pct(settings.max_shift)} a leg · {moved.length} of {shifts.length} legs change
+                Maximum change: {Number((settings.max_shift * 100).toFixed(2))} percentage points per holding · {moved.length} of {shifts.length} holdings change
               </span>
             </div>
           )}
@@ -283,10 +317,10 @@ function Signals({ signals, question }: { signals: ClimateSignal[]; question: (m
   return (
     <div className="clim-block">
       <h3>
-        Signals <span className="bd-count">{signals.length}</span>
+        Assessments for this basket <span className="bd-count">{signals.length}</span>
       </h3>
       {signals.length === 0 ? (
-        <p className="bd-foot">No fresh, validated news assessments for this basket in the last hour.</p>
+        <p className="bd-foot">No recent, validated news assessments for this basket.</p>
       ) : (
         <ul className="clim-feed">
           {shown.map((s) => (

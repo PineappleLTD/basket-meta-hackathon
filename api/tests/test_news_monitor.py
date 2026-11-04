@@ -48,17 +48,18 @@ def monitor(app, client, tmp_path):
         "news_monitor_enabled": True, "meta_api_key": "synthetic-key",
         "news_monitor_state": str(tmp_path / "agent.sqlite3"),
         "news_feature_cache": str(tmp_path / "features.sqlite3"),
+        "news_monitor_discovery_limit": 10, "news_monitor_evidence_limit": 10,
     })
     item = NewsMonitor(settings, app.state.sessionmaker, app.state.sessionmaker.kw["bind"])
     assert item._initialize()
     return item
 
 
-def install_sources(monitor, portfolio, session, *, evidence_error=False, discovery_error=False):
+def install_sources(monitor, portfolio, session, *, evidence_error=False, discovery_error=False, age_seconds=0):
     target = news.watchlist(session, portfolio[1])["topics"][0]
     article = Article.parse({"headline": "Official setback: " + target["contract"]["question"] + " Condition ruled out.",
                              "summary": "An official statement rules out the condition.",
-                             "published_at": utcnow().isoformat(), "url": "https://example.org/official",
+                             "published_at": (utcnow() - timedelta(seconds=age_seconds)).isoformat(), "url": "https://example.org/official",
                              "source": "Synthetic source"})
     # The real source parser constructs this same identity (source name is not part of its ID).
     body = (f"<rss><channel><item><title>{article.headline}</title>"
@@ -118,7 +119,7 @@ def test_real_discovery_evidence_ridge_delivery_and_existing_auto_execution(moni
     try:
         monitor.cycle(with_store)
         assert monitor.local_status == "MONITORING"
-        assert counts["discovery"] == 2
+        assert counts["discovery"] == 1
         assert with_store.pending()
         assert 1 <= counts["evidence"] <= 3
         assert portfolio[2].requests == []  # News agent has no order capability.
@@ -128,8 +129,8 @@ def test_real_discovery_evidence_ridge_delivery_and_existing_auto_execution(moni
         assert all(s.payload["result"]["feature_cache_hit"] for s in saved)
         assert all(s.basket_id == portfolio[1].id for s in saved)
         monitor.cycle(with_store)
-        assert counts["discovery"] == 2
-        assert session.scalar(select(NewsMonitorUsage.attempts).where(NewsMonitorUsage.kind == "discovery")) == 2
+        assert counts["discovery"] == 1
+        assert session.scalar(select(NewsMonitorUsage.attempts).where(NewsMonitorUsage.kind == "discovery")) == 1
         assert len(session.scalars(select(NewsSignal)).all()) == len(saved)
         # The existing price-update automation is unchanged and consumes these signals.
         news_execution.run(session, app.state.brokers)

@@ -397,9 +397,9 @@ export default function Page() {
               <>
                 <ClimateSettingsCard
                   settings={climateSettings}
-                  regime={climate?.regime ?? null}
+                  regime={climate && climate.signals.length > 0 ? climate.regime : null}
                   onChange={changeClimateSettings}
-                  busy={savingClimate}
+                  busy={savingClimate || !climate}
                   error={climateError}
                 />
                 <ExchangePanel basketId={basket.id} />
