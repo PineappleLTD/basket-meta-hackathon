@@ -14,6 +14,31 @@ existing LangChain agent. Muse extracts evidence; the saved Ridge model classifi
 it. Basket independently validates the cached evidence before saving a signal.
 Neither the agent nor this worker has order-placement tools.
 
+The app considers the previous **24 hours** of source news by default. This same
+window applies to collection, staging, evidence scoring, intake, and executable
+signals; future-dated stories and expired contracts are still rejected. Each new
+verified assessment records its window, and a rebalance expires by that window
+or the contract deadline, whichever comes first. Existing assessments without a
+saved window retain their original one-hour expiry. The standalone news-agent
+CLI keeps its one-hour default.
+
+A healthy collector does not mean a trade is warranted. Discovery only selects
+articles; the exact-contract classifier can return unrelated, uncertain, neutral,
+favorable, or adverse evidence. Only accepted net adverse evidence can propose
+a reduction under the current allocation policy. A 2026 election report is not
+automatically evidence about a 2028 outcome.
+
+Discovery screens one basket at a time and rotates across baskets. The prompt
+includes the actual check time and permits plausible thesis context to reach
+the strict evidence classifier. Only explicitly selected article/contract pairs
+spend evidence calls; lexical matches alone do not trigger paid assessments.
+One discovery response can stage multiple pairs without a paid acknowledgement.
+
+A provider response marked incomplete is a failure, not "no relevant news."
+Unfinished batches are not marked considered. Discovery uses low reasoning and
+an 8192-token output ceiling; sanitized completion status and token counts are
+saved locally without retaining provider content or credentials.
+
 The existing response setting remains authoritative:
 
 - **Off:** news may still be read and displayed; no news-driven orders.
@@ -26,7 +51,7 @@ the saved ETF targets. Real exchange execution remains separately disabled by de
 
 ## Spending controls
 
-The initial allowance is **10 discovery HTTP attempts plus 10 evidence HTTP attempts
+The initial allowance is **30 discovery HTTP attempts plus 30 evidence HTTP attempts
 total**, shared across all ETFs and restarts. Each paid request is reserved in the
 app database *before* sending; retries and failed attempts count. Polling does not
 reset this allowance. Once either limit is reached, monitoring stops visibly.
@@ -34,7 +59,7 @@ reset this allowance. Once either limit is reached, monitoring stops visibly.
 RSS reads need no Muse credits and are cached for two minutes. Article identities,
 discovery decisions and evidence are reused so the same supplied facts and contract
 context do not need another paid assessment. A cycle can consider up to 20 source
-records, make at most two discovery calls, and start at most three evidence
+records, make at most one discovery call, and start at most three evidence
 assessments, subject to the stricter shared totals. An evidence assessment may retry
 up to three times; each attempt still counts against the evidence total.
 
@@ -45,8 +70,9 @@ basket naming keep their existing separate API behavior.
 | --- | --- |
 | `PMETF_NEWS_MONITOR_ENABLED` | `true` |
 | `PMETF_NEWS_MONITOR_INTERVAL_SECONDS` | `120` (minimum 10) |
-| `PMETF_NEWS_MONITOR_DISCOVERY_LIMIT` | `10`, cumulative |
-| `PMETF_NEWS_MONITOR_EVIDENCE_LIMIT` | `10`, cumulative |
+| `PMETF_NEWS_MAX_AGE_SECONDS` | `86400` (24 hours; configurable from 60 to 86400) |
+| `PMETF_NEWS_MONITOR_DISCOVERY_LIMIT` | `30`, cumulative |
+| `PMETF_NEWS_MONITOR_EVIDENCE_LIMIT` | `30`, cumulative |
 | `PMETF_NEWS_MONITOR_STATE` | `api/data/news-agent.sqlite3` |
 | `PMETF_NEWS_FEATURE_CACHE` | packaged engine's data workspace evidence cache |
 | `PMETF_NEWS_MODEL_PATH` | packaged active Ridge artifact |
@@ -65,6 +91,11 @@ The News climate panel shows the collector's status, last completed check and
 request usage. The owner-authenticated climate response includes the same
 `monitoring` object without other owners' portfolio details.
 
+The panel separates news collection from the basket's Off/Suggest/Auto response.
+Monitoring details include matched candidates, newly staged articles, new/reused
+assessments, saved assessments, and excluded old/future source records. A failed
+browser refresh marks the retained status stale instead of claiming it is current.
+
 - `MONITORING`: the last news check completed; the worker is waiting for its next poll.
 - `WAITING_FOR_BASKETS`: no saved open contract has complete exchange rules yet.
 - `WAITING_FOR_KEY` / `DISABLED`: configure the server key / enable monitoring.
@@ -78,6 +109,8 @@ request usage. The owner-authenticated climate response includes the same
 - `UNAVAILABLE`: the worker has not reported recently; check the backend process.
 
 No paid-provider exception bodies, keys, or auth tokens are returned in status.
+Discovery failures report an allowlisted category and, when available, an HTTP
+status; incompatible news-engine installations are reported separately.
 Invalid evidence produces no trading signal. This build performs paper execution;
 the classifier's scores are directional evidence, not calibrated probabilities or
 proof of profitable trading.

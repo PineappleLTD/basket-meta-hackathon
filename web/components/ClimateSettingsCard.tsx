@@ -2,12 +2,11 @@
 
 import { InfoTip } from "./InfoTip";
 import type { ClimateMode, ClimateSettings, Regime } from "@/lib/climate";
-import { pct } from "@/lib/format";
 
 const MODES: [ClimateMode, string][] = [
   ["off", "Off"],
-  ["suggest", "Suggest"],
-  ["auto", "Auto"],
+  ["suggest", "Review first"],
+  ["auto", "Automatic"],
 ];
 const SENSITIVITY: [number, string][] = [
   [0.25, "Low"],
@@ -17,9 +16,9 @@ const SENSITIVITY: [number, string][] = [
 const MAX_SHIFT = [0.02, 0.05, 0.1];
 
 const MODE_NOTE: Record<ClimateMode, string> = {
-  off: "News is still read and shown, but weights never move.",
-  suggest: "Review a proposal, then start a paper rebalance. Purchases wait until all planned sales fill.",
-  auto: "Rebalance paper holdings on new evidence. Only existing ETF positions can receive proceeds; all planned sales must fill first.",
+  off: "News can still be shown, but it will not change your holdings.",
+  suggest: "Review suggested weight changes and choose whether to rebalance.",
+  auto: "Rebalance automatically when assessed news calls for a change.",
 };
 
 interface Props {
@@ -35,7 +34,7 @@ export function ClimateSettingsCard({ settings, regime, onChange, busy, error }:
   return (
     <div className="ticket auto">
       <div className="ticket-head">
-        <h2>Climate response</h2>
+        <h2>News response</h2>
         {regime && (
           <span className="ticket-mode">
             <span className={`clim-dot ${regime}`} aria-hidden="true" /> {regime[0].toUpperCase() + regime.slice(1)}
@@ -43,7 +42,7 @@ export function ClimateSettingsCard({ settings, regime, onChange, busy, error }:
         )}
       </div>
 
-      <div className="ticket-tabs clim-modes" role="tablist" aria-label="Climate reweighting">
+      <div className="ticket-tabs clim-modes" role="tablist" aria-label="News response">
         {MODES.map(([m, label]) => (
           <button
             key={m}
@@ -59,13 +58,13 @@ export function ClimateSettingsCard({ settings, regime, onChange, busy, error }:
         ))}
       </div>
       <p className="invest-fine clim-mode-note">{MODE_NOTE[settings.mode]}</p>
-      <p className="invest-fine">Paper trading only. The ETF remembers the completed allocation, including cash. Other trades wait while a news rebalance is pending.</p>
+      <p className="invest-fine">Paper trading only. Planned sales finish before other holdings in this basket are bought.</p>
       {error && <p className="auth-error" role="alert">{error}</p>}
 
       <label className="auto-row">
         <span>
           Sensitivity
-          <InfoTip>How far a leg leans per unit of news signal. High follows the news closely; low only moves on strong, confident stories.</InfoTip>
+          <InfoTip>How much accepted news can change a holding&rsquo;s weight. High makes larger changes; low makes smaller ones.</InfoTip>
         </span>
         <select
           value={settings.sensitivity}
@@ -83,18 +82,18 @@ export function ClimateSettingsCard({ settings, regime, onChange, busy, error }:
 
       <label className="auto-row">
         <span>
-          Max move per leg
-          <InfoTip>The most any one market&rsquo;s weight can change in a single reweight, as a share of the basket.</InfoTip>
+          Maximum weight change
+          <InfoTip>The most one holding&rsquo;s share can change in a single rebalance. A 5 percentage point limit can move a holding from 20% to 15% or 25%.</InfoTip>
         </span>
         <select
           value={settings.max_shift}
           disabled={busy || settings.mode === "off"}
           onChange={(e) => onChange({ ...settings, max_shift: Number(e.target.value) })}
         >
-          {!MAX_SHIFT.includes(settings.max_shift) && <option value={settings.max_shift}>±{pct(settings.max_shift)} (custom)</option>}
+          {!MAX_SHIFT.includes(settings.max_shift) && <option value={settings.max_shift}>{Number((settings.max_shift * 100).toFixed(2))} points (custom)</option>}
           {MAX_SHIFT.map((v) => (
             <option key={v} value={v}>
-              ±{pct(v)}
+              {v * 100} points
             </option>
           ))}
         </select>

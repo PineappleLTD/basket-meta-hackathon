@@ -55,9 +55,11 @@ class Settings(BaseSettings):
     # not allowances that reset every poll. Increase only with an approved budget.
     news_monitor_enabled: bool = True
     news_monitor_interval_seconds: float = Field(default=120, ge=10, le=86400)
+    # Same-day coverage for long-horizon contracts; future/expired evidence is rejected.
+    news_max_age_seconds: int = Field(default=86400, ge=60, le=86400)
     news_monitor_state: str = str(API_DIR / "data" / "news-agent.sqlite3")
-    news_monitor_discovery_limit: int = Field(default=10, ge=0)
-    news_monitor_evidence_limit: int = Field(default=10, ge=0)
+    news_monitor_discovery_limit: int = Field(default=30, ge=0)
+    news_monitor_evidence_limit: int = Field(default=30, ge=0)
     news_monitor_retry_errors: bool = False
     # Never inferred from Meta credentials. External execution is off by default.
     live_enabled: bool = False

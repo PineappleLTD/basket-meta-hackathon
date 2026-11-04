@@ -5,14 +5,19 @@ FastAPI + SQLAlchemy + SQLite backend for building "ETF" baskets of Kalshi outco
 ## Run
 
 ```bash
+# From the repository root, using Python 3.12 or newer:
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-news.txt
+.venv/bin/python scripts/run_api.py       # http://127.0.0.1:8000/docs
+# Tests, with the same environment:
 cd api
-.venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --reload    # http://localhost:8000/docs
-.venv/bin/python -m pytest
+PYTHONPATH=../news_engine ../.venv/bin/python -m pytest
 ```
 
-For app-managed news monitoring, install `requirements-news.txt` from the repository
-root into the same Python environment used by the API. See [NEWS_MONITOR.md](../NEWS_MONITOR.md)
+The launcher selects this checkout's bundled engine even when the environment
+contains another editable installation. `--check-imports` verifies that selection
+without starting the app or making model calls. Use `--host 0.0.0.0 --port "$PORT"`
+when starting on a hosting service. See [NEWS_MONITOR.md](../NEWS_MONITOR.md)
 for startup, the shared request allowance, monitoring status, and recovery.
 
 The SQLite file lives at `api/data/app.db` and is created on startup; tables come from

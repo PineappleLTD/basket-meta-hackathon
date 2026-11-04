@@ -15,9 +15,12 @@ from .ridge_model import PositionRidge, classes
 
 
 class Predictor:
-    def __init__(self, artifact=None, *, cache_path=None, max_calls=1, client=None):
+    def __init__(self, artifact=None, *, cache_path=None, max_calls=1, client=None, max_age_seconds=3600):
         if max_calls < 1:
             raise ValueError('A positive model-call budget is required.')
+        if isinstance(max_age_seconds, bool) or not isinstance(max_age_seconds, int) or not 1 <= max_age_seconds <= 86400:
+            raise ValueError('Headline age must be between one second and 24 hours.')
+        self.max_age_seconds = max_age_seconds
         active = None
         if artifact is None:
             artifact, active = active_model()
@@ -52,8 +55,9 @@ class Predictor:
         result = {'article_id': article.id, 'held_outcome': contract['outcome'],
                   'artifact_sha256': self.artifact_hash, 'evidence_model': self.scorer.evidence_model,
                   'experimental': self.experimental, 'historical': historical,
-                  'score_is_probability': False, 'execution': 'NOT_CONNECTED'}
-        if not historical and (not article.is_fresh(now) or deadline <= now):
+                  'score_is_probability': False, 'execution': 'NOT_CONNECTED',
+                  'max_age_seconds': self.max_age_seconds}
+        if not historical and (not article.is_fresh(now, self.max_age_seconds) or deadline <= now):
             return {**result, 'classification': 'ABSTAIN', 'reason': 'stale_article_or_expired_contract'}
         if utc(article.published_at) >= deadline:
             return {**result, 'classification': 'ABSTAIN', 'reason': 'article_at_or_after_contract_deadline'}

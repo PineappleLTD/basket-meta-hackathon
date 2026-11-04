@@ -1,7 +1,7 @@
 .venv/
 *__pycache__/
 .pytest_cache/
-node_modules/
+node_modules
 api/data/*
 *.db
 .DS_Store

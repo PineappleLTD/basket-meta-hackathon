@@ -216,10 +216,12 @@ class PipelineTests(unittest.TestCase):
         finally:
             predictor.close()
 
-    def test_scoring_is_idempotent_and_checks_each_matching_contract(self):
+    def test_scoring_is_idempotent_and_checks_each_selected_contract(self):
         store = Store(self.path/'agent.sqlite3')
-        ident = store.record_article(article()); store.stage(ident, TOPIC['id'], 'Relevant')
+        ident = store.record_article(article())
         topics = [{**TOPIC, 'id':str(n), 'contract':{'platform':'kalshi','outcome':'YES','question': 'Rates?', 'resolution_rules':'Rates rule', 'deadline':'2026-12-01T00:00:00Z'}} for n in range(2)]
+        for selected in topics:
+            store.stage(ident, selected['id'], 'Selected for this exact contract')
         class P:
             artifact_hash = 'fixture'
             calls = 0
