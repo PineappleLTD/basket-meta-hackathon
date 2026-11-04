@@ -34,4 +34,6 @@ class Article:
         return hashlib.sha256((source_key + '|' + self.headline + '|' + self.summary).encode()).hexdigest()
 
     def is_fresh(self, now, max_age=3600):
+        if isinstance(max_age, bool) or not isinstance(max_age, int) or not 1 <= max_age <= 86400:
+            raise ValueError('Headline age must be between one second and 24 hours.')
         return 0 <= (now - utc(self.published_at)).total_seconds() <= max_age

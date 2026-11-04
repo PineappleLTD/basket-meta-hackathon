@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import json
 
-from .core import AgentError, matches
+from .core import AgentError
 
 
 def score_staged(store, topics, *, model_calls, artifact=None, limit=40, predictor=None, clock=None):
@@ -21,32 +21,36 @@ def score_staged(store, topics, *, model_calls, artifact=None, limit=40, predict
         staged = list(store.db.execute("SELECT article_id,topic_id FROM outbox WHERE status IN ('pending','delivered') ORDER BY rowid DESC"))
     results = []
     reused = 0
+    max_age = getattr(predictor, 'max_age_seconds', 3600)
     try:
         from headline_model.dataset import digest
-        for article_id, staged_topic_id in staged:
-            article = store.article(article_id)
-            for topic in contracts:
-                if topic['id'] != staged_topic_id and not matches(article, topic):
-                    continue
-                key = digest({'article_id': article_id, 'topic_id': topic['id'], 'contract': topic['contract'], 'artifact': predictor.artifact_hash})
-                # Freshness is rechecked even for previously scored records.
-                from .core import utc
-                if not article.is_fresh(clock()) or utc(topic['contract']['deadline']) <= clock():
-                    continue
-                with store.lock:
-                    saved = store.db.execute('SELECT result FROM scores WHERE key=?', (key,)).fetchone()
-                if saved:
-                    reused += 1
-                    continue
-                result = predictor.predict(article.__dict__, topic['contract'], now=clock())
-                result.update({'topic_id': topic['id'], 'article_id': article_id})
-                if result.get('reason') == 'model_call_budget_reached':
-                    return {'scored': results, 'reused': reused, 'model_calls': predictor.calls, 'budget_exhausted': True}
-                with store.lock, store.db:
-                    store.db.execute('INSERT OR IGNORE INTO scores VALUES (?,?,?,?)', (key, article_id, topic['id'], json.dumps(result)))
-                results.append(result)
-                if len(results) >= limit:
-                    return {'scored': results, 'reused': reused, 'model_calls': predictor.calls, 'limit_reached': True}
+        # Only assess exact pairs selected by discovery. Expanding one political
+        # headline to every lexical match spent the allowance on unselected work.
+        articles = {aid: store.article(aid) for aid, _ in staged}
+        by_id = {t['id']: t for t in contracts}
+        pairs = [(aid, by_id[tid]) for aid, tid in staged if tid in by_id]
+        for article_id, topic in pairs:
+            article = articles[article_id]
+            key = digest({'article_id': article_id, 'topic_id': topic['id'], 'contract': topic['contract'],
+                          'artifact': predictor.artifact_hash, 'max_age_seconds': max_age})
+            # Freshness is rechecked even for previously scored records.
+            from .core import utc
+            if not article.is_fresh(clock(), max_age) or utc(topic['contract']['deadline']) <= clock():
+                continue
+            with store.lock:
+                saved = store.db.execute('SELECT result FROM scores WHERE key=?', (key,)).fetchone()
+            if saved:
+                reused += 1
+                continue
+            result = predictor.predict(article.__dict__, topic['contract'], now=clock())
+            result.update({'topic_id': topic['id'], 'article_id': article_id})
+            if result.get('reason') == 'model_call_budget_reached':
+                return {'scored': results, 'reused': reused, 'model_calls': predictor.calls, 'budget_exhausted': True}
+            with store.lock, store.db:
+                store.db.execute('INSERT OR IGNORE INTO scores VALUES (?,?,?,?)', (key, article_id, topic['id'], json.dumps(result)))
+            results.append(result)
+            if len(results) >= limit:
+                return {'scored': results, 'reused': reused, 'model_calls': predictor.calls, 'limit_reached': True}
         return {'scored': results, 'reused': reused, 'model_calls': predictor.calls, 'execution': 'NOT_CONNECTED'}
     finally:
         if own:

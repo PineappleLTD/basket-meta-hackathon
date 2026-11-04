@@ -15,7 +15,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import Basket, as_utc, utcnow
-from app.news_models import NewsMonitorStatus, NewsMonitorUsage
+from app.news_models import NewsMonitorStatus, NewsMonitorUsage, NewsSignal
 from app.services import news
 
 log = logging.getLogger(__name__)
@@ -199,6 +199,7 @@ class NewsMonitor:
 
     def _deliver(self, store, watchlists):
         """Revalidate cached evidence and current owner/constituents before ingestion."""
+        delivered = 0
         with store.lock:
             rows = store.db.execute("SELECT DISTINCT article_id,topic_id FROM scores ORDER BY rowid DESC").fetchall()
         for basket_id, topics in watchlists.items():
@@ -212,23 +213,26 @@ class NewsMonitor:
                 for article_id in article_ids:
                     self._check_stop()
                     article = store.article(article_id)
-                    if not article.is_fresh(utcnow()):
+                    if not article.is_fresh(utcnow(), self.settings.news_max_age_seconds):
                         continue
                     with self.sessions() as session:
                         basket = session.get(Basket, basket_id)
                         if basket is None:
                             continue
-                        news.ingest(session, basket, article.__dict__, predictor)
+                        before = set(session.scalars(select(NewsSignal.id).where(NewsSignal.basket_id == basket_id)))
+                        result = news.ingest(session, basket, article.__dict__, predictor)
                         session.commit()
+                        delivered += len(set(result["saved"]) - before)
             finally:
                 predictor.close()
+        return delivered
 
     def cycle(self, store):
         import httpx
         from headline_model.muse_matcher import MetaClient
         from headline_model.paths import MODEL_ROOT
         from headline_model.predictor import Predictor
-        from news_agent.agent import make_model, run_agent
+        from news_agent.agent import PROMPT, make_model, run_agent
         from news_agent.providers import HTTP, NoRedirect, collect
         from news_agent.scoring import score_staged
 
@@ -245,7 +249,8 @@ class NewsMonitor:
                                 opener=lambda request, timeout: self._evidence_open(evidence_opener, request, timeout),
                                 sleeper=self._sleep)
             predictor = Predictor(self.settings.news_model_path,
-                                  cache_path=self.settings.news_feature_cache, max_calls=3, client=client)
+                                  cache_path=self.settings.news_feature_cache, max_calls=3, client=client,
+                                  max_age_seconds=self.settings.news_max_age_seconds)
             stack.callback(predictor.close)
             http_client = stack.enter_context(httpx.Client(
                 transport=self.discovery_transport, follow_redirects=False, timeout=45,
@@ -254,38 +259,70 @@ class NewsMonitor:
             http = HTTP(store, 20, opener=lambda request, timeout: self._open(source_opener, request, timeout),
                         sleeper=self._sleep)
             feeds = json.loads((MODEL_ROOT / "news_feeds.json").read_text())["feeds"]
-            collected = collect(store, http, topics, "rss", feeds=feeds)
+            collected = collect(store, http, topics, "rss", feeds=feeds,
+                                max_age=self.settings.news_max_age_seconds)
             self._check_stop()
-            context = news.digest(topics)
             with store.lock, store.db:
                 store.db.execute("CREATE TABLE IF NOT EXISTS monitor_considered (key TEXT PRIMARY KEY)")
                 considered = {r[0] for r in store.db.execute("SELECT key FROM monitor_considered")}
-            candidates = [c for c in collected["candidates"]
-                          if f"{context}:{c['article_id']}" not in considered][:20]
+            # Conflicting theses and dozens of overlapping contracts confused a
+            # single discovery prompt. Screen one basket at a time, rotating so
+            # a busy/older basket cannot monopolize the shared allowance.
+            basket_ids = sorted(watchlists, reverse=True)
+            cursor = store.cached("monitor:last_basket", utcnow(), 365 * 86400)
+            if cursor in basket_ids:
+                offset = (basket_ids.index(cursor) + 1) % len(basket_ids)
+                basket_ids = basket_ids[offset:] + basket_ids[:offset]
+            candidates, discovery_topics, context, selected_basket = [], [], None, None
+            for basket_id in basket_ids:
+                group = watchlists[basket_id]
+                topic_ids = {t["id"] for t in group}
+                candidate_context = news.digest({"topics": group, "max_age_seconds": self.settings.news_max_age_seconds,
+                                                "discovery_prompt": news.digest(PROMPT)})
+                matching = [{**c, "topic_ids": [tid for tid in c["topic_ids"] if tid in topic_ids]}
+                            for c in collected["candidates"]
+                            if topic_ids.intersection(c["topic_ids"])
+                            and f"{candidate_context}:{c['article_id']}" not in considered]
+                if matching:
+                    candidates, discovery_topics, context, selected_basket = matching[:20], group, candidate_context, basket_id
+                    break
             remaining = self._remaining("discovery")
+            staged = 0
             if candidates and remaining:
                 factory = self.model_factory or make_model
                 model = factory(http_client=http_client, api_key=self.settings.meta_api_key,
                                 model_name=self.settings.llama_model, timeout=45)
-                run_agent(store, topics, candidates, model_budget=min(2, remaining),
-                          tool_budget=20, candidate_limit=20, model=model)
+                discovery = run_agent(store, discovery_topics, candidates, model_budget=1,
+                                      tool_budget=20, candidate_limit=20, model=model,
+                                      max_age_seconds=self.settings.news_max_age_seconds)
+                staged = len(discovery["staged"])
+                store.cache("monitor:last_basket", selected_basket, utcnow())
                 with store.lock, store.db:
                     store.db.executemany("INSERT OR IGNORE INTO monitor_considered VALUES (?)",
                                          [(f"{context}:{c['article_id']}",) for c in candidates])
             self._check_stop()
+            scored = {"scored": [], "reused": 0}
             try:
-                score_staged(store, topics, model_calls=3, predictor=predictor)
+                scored = score_staged(store, topics, model_calls=3, predictor=predictor)
             except BudgetReached:
                 # Already validated results are preserved and may still be delivered.
                 pass
-            self._deliver(store, watchlists)
+            delivered = self._deliver(store, watchlists)
+            hours = self.settings.news_max_age_seconds / 3600
+            note = (f"Across saved baskets: {collected.get('fresh_records', len(collected['candidates']))} fresh source records; "
+                    f"{len(collected['candidates'])} matched candidates; {staged} newly staged; "
+                    f"{len(scored['scored'])} new assessments, {scored.get('reused', 0)} reused; "
+                    f"{delivered} new basket assessments saved. "
+                    f"News window: {hours:g} hour{'s' if hours != 1 else ''}; "
+                    f"{collected['stale_or_future']} stale or future source records excluded. "
+                    "A completed feed check does not imply a rebalance.")
             exhausted = not self._remaining("discovery") or not self._remaining("evidence")
             if exhausted:
-                self._status("BUDGET_EXHAUSTED", "Monitoring stopped at the approved request allowance.", checked=True)
+                self._status("BUDGET_EXHAUSTED", "Monitoring stopped at the approved request allowance. " + note, checked=True)
             elif collected["errors"]:
-                self._status("DEGRADED", "Some news feeds could not be read; available feeds were checked.", checked=True)
+                self._status("DEGRADED", "Some news feeds could not be read. " + note, checked=True)
             else:
-                self._status("MONITORING", "Checking news for saved ETF positions.", checked=True)
+                self._status("MONITORING", note, checked=True)
 
     def _run(self):
         lock = InstanceLock(self.engine, Path(self.settings.news_monitor_state))
@@ -317,15 +354,26 @@ class NewsMonitor:
                 store.close()
         except MonitorStopped:
             pass
-        except Exception:  # noqa: BLE001 -- isolate this optional worker and redact provider data
+        except Exception as error:  # noqa: BLE001 -- isolate this optional worker and redact provider data
+            try:
+                from news_agent.agent import DiscoveryError
+                discovery_error_type = DiscoveryError
+            except ImportError:
+                discovery_error_type = ()  # An older/missing optional engine must also fail safely.
+            if isinstance(error, discovery_error_type):
+                detail = f"discovery {error.category}" + (f" (HTTP {error.status_code})" if error.status_code else "")
+            elif isinstance(error, (ImportError, TypeError)):
+                detail = "an incompatible news-engine installation or configuration"
+            else:
+                detail = "a source, model, or evidence validation error"
             # Never log provider exceptions: their request objects can contain keys.
-            log.warning("News monitoring paused after a failure; core app services remain available")
+            log.warning("News monitoring paused: %s; core app services remain available", detail)
             log.warning("News monitor failure (types and frames only): %s", _redacted_failure())
             try:
                 if not self._remaining("discovery") or not self._remaining("evidence"):
                     self._status("BUDGET_EXHAUSTED", "Monitoring stopped at the approved request allowance.")
                 else:
-                    self._status("PAUSED_ERROR", "News monitoring paused after a source, model, or evidence error. Check server configuration before resuming.")
+                    self._status("PAUSED_ERROR", f"News monitoring paused after {detail}. Check server configuration before resuming.")
             except SQLAlchemyError:
                 self.local_status = "PAUSED_ERROR"
         finally:

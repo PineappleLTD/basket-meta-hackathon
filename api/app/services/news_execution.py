@@ -103,7 +103,8 @@ def _start_plan(session, account, basket, broker, expected_id=None, now=None):
                "sells": sells, "buys": buys, "proceeds_cents": 0, "spent_cents": 0,
                "signal_ids": plan["signal_ids"], "proposal_id": plan["id"]}
     sigs = [session.get(news.NewsSignal, sid) for sid in plan["signal_ids"]]
-    expires = min(as_utc(s.published_at) + news.MAX_NEWS_AGE for s in sigs)
+    specs = {t["market_id"]: t["contract"] for t in news.watchlist(session, basket)["topics"]}
+    expires = min(min(news.signal_expires_at(s), news.utc(specs[s.market_id]["deadline"])) for s in sigs)
     cycle = NewsCycle(id=news.digest({"account": account.id, "basket": basket.id, "event": plan["event_key"]}),
                      account_id=account.id, basket_id=basket.id, event_key=plan["event_key"],
                      status="SELLING", payload=payload, expires_at=expires,

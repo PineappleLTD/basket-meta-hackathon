@@ -79,6 +79,8 @@ class Article:
                                + '|' + self.published_at).encode()).hexdigest()
 
     def is_fresh(self, now: datetime, max_age: int = 3600) -> bool:
+        if isinstance(max_age, bool) or not isinstance(max_age, int) or not 1 <= max_age <= 86400:
+            raise AgentError('Headline age must be between one second and 24 hours.')
         return 0 <= (now - utc(self.published_at)).total_seconds() <= max_age
 
     def intake_payload(self) -> dict:
@@ -152,10 +154,35 @@ class Store:
             CREATE TABLE IF NOT EXISTS requests (
                 id INTEGER PRIMARY KEY, provider TEXT NOT NULL, day TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS outbox (
-                article_id TEXT PRIMARY KEY, topic_id TEXT NOT NULL, reason TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending');
+                article_id TEXT NOT NULL, topic_id TEXT NOT NULL, reason TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending', PRIMARY KEY (article_id, topic_id));
         ''')
         self.db.commit()
+        self._migrate_outbox_pairs()
+
+    def _migrate_outbox_pairs(self):
+        """Upgrade the original article-only key without discarding staged work."""
+        try:
+            with self.db:
+                # Recheck the schema after obtaining the write lock: another
+                # process may have upgraded this shared store in the meantime.
+                self.db.execute('BEGIN IMMEDIATE')
+                columns = self.db.execute('PRAGMA table_info(outbox)').fetchall()
+                primary = [column[1] for column in sorted(columns, key=lambda column: column[5]) if column[5]]
+                if primary == ['article_id', 'topic_id']:
+                    return
+                if primary != ['article_id']:
+                    raise AgentError('Unsupported news outbox schema; existing records were left unchanged.')
+                self.db.execute('''CREATE TABLE outbox_topic_upgrade (
+                    article_id TEXT NOT NULL, topic_id TEXT NOT NULL, reason TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending', PRIMARY KEY (article_id, topic_id))''')
+                self.db.execute('''INSERT INTO outbox_topic_upgrade (article_id,topic_id,reason,status)
+                                   SELECT article_id,topic_id,reason,status FROM outbox ORDER BY rowid''')
+                self.db.execute('DROP TABLE outbox')
+                self.db.execute('ALTER TABLE outbox_topic_upgrade RENAME TO outbox')
+        except Exception:
+            self.db.close()
+            raise
 
     def close(self):
         self.db.close()
@@ -213,12 +240,29 @@ class Store:
 
     def outbox_status(self, article_id: str) -> str | None:
         with self.lock:
-            row = self.db.execute('SELECT status FROM outbox WHERE article_id=?', (article_id,)).fetchone()
-            return row[0] if row else None
+            states = {r[0] for r in self.db.execute('SELECT status FROM outbox WHERE article_id=?', (article_id,))}
+        return self._article_status(states)
+
+    @staticmethod
+    def _article_status(states) -> str | None:
+        # Keep the article-based delivery API: one new topic makes the article
+        # pending again, while a revision requiring review must never be sent.
+        return next((status for status in ('needs_revision_review', 'pending', 'delivered', 'expired')
+                     if status in states), min(states) if states else None)
+
+    def _article_statuses(self):
+        grouped = {}
+        for article_id, status in self.db.execute('SELECT article_id,status FROM outbox ORDER BY rowid'):
+            grouped.setdefault(article_id, set()).add(status)
+        return {article_id: self._article_status(states) for article_id, states in grouped.items()}
+
+    def staged_pairs(self) -> set[tuple[str, str]]:
+        with self.lock:
+            return set(self.db.execute('SELECT article_id,topic_id FROM outbox'))
 
     def pending(self) -> list[str]:
         with self.lock:
-            return [r[0] for r in self.db.execute("SELECT article_id FROM outbox WHERE status='pending' ORDER BY rowid")]
+            return [article_id for article_id, status in self._article_statuses().items() if status == 'pending']
 
     def mark(self, article_id: str, status: str):
         with self.lock, self.db:
@@ -226,5 +270,8 @@ class Store:
 
     def status(self) -> dict:
         with self.lock:
+            statuses = {}
+            for status in self._article_statuses().values():
+                statuses[status] = statuses.get(status, 0) + 1
             return {'articles': self.db.execute('SELECT COUNT(*) FROM articles').fetchone()[0],
-                    'outbox': dict(self.db.execute('SELECT status,COUNT(*) FROM outbox GROUP BY status'))}
+                    'outbox': statuses}

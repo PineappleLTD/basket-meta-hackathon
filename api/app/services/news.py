@@ -16,7 +16,16 @@ from app.models import Account, AccountMode, Side, as_utc, utcnow
 from app.news_models import NewsCash, NewsConsumption, NewsContract, NewsCycle, NewsPolicy, NewsSignal
 
 ACTIVE = ("SELLING", "BUYING")
-MAX_NEWS_AGE = timedelta(hours=1)
+MAX_NEWS_AGE = timedelta(hours=24)
+
+
+def signal_expires_at(signal):
+    """Legacy evidence retains its one-hour limit; a verified assessment saves its window."""
+    seconds = signal.payload["result"].get("max_age_seconds", 3600)
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds):
+        seconds = 3600
+    seconds = min(max(seconds, 0), MAX_NEWS_AGE.total_seconds())
+    return as_utc(signal.published_at) + timedelta(seconds=seconds)
 
 
 def utc(value):
@@ -117,9 +126,28 @@ def watchlist(session, basket):
                     "resolution_rules": spec.rules, "deadline": as_utc(spec.deadline).isoformat(),
                     "thesis": basket.description or ("The supplied resolution condition occurs." if p.side == Side.YES
                                                        else "The supplied resolution condition does not occur.")}
-        stop = {"will", "have", "does", "what", "which", "before", "after", "than", "this", "that", "year", "more", "less", "above", "below"}
-        aliases = list(dict.fromkeys(w.casefold() for w in re.findall(r"[A-Za-z][A-Za-z'-]{3,}", p.market.question)
-                                     if w.casefold() not in stop))
+        # This is a recall prefilter, not the evidence classifier. Generic words
+        # such as "least" or "college" previously admitted unrelated accidents
+        # and campus news while GOP/plural party names were missed entirely.
+        stop = {
+            "will", "have", "does", "what", "which", "before", "after", "than", "this", "that",
+            "year", "years", "more", "less", "above", "below", "least", "most", "between",
+            "over", "under", "within", "from", "with", "their", "there", "would", "could",
+            "should", "about", "into", "through", "during", "until", "been", "being", "also",
+            "candidate", "candidates", "college", "party", "parties", "election", "elections",
+            "electoral", "president", "presidents", "presidential", "presidency", "popular", "vote", "votes", "seats",
+            "hold", "holds", "held", "wins", "winning", "nominee", "nominees", "nomination",
+            "receive", "receives", "announce", "announces", "named", "called", "control", "change",
+            "thesis", "think", "believe", "expect", "expected", "likely", "unlikely",
+            "january", "february", "march", "april", "june", "july", "august", "september",
+            "october", "november", "december", "united", "states",
+        }
+        context = p.market.question + " " + (basket.description or "")
+        words = re.findall(r"[A-Za-z][A-Za-z'-]{2,}", context.casefold())
+        aliases = list(dict.fromkeys(w for w in words if len(w) >= 4 and w not in stop))
+        for variants in (("republican", "republicans", "gop"), ("democrat", "democrats", "democratic")):
+            if any(w in variants for w in words):
+                aliases.extend(w for w in variants if w not in aliases)
         topics.append({"id": f"basket-{basket.id}-{p.market_id}-{p.side.value}", "category": p.market.category or "General",
                        "alias_groups": [aliases or [p.market.question]], "query": p.market.question[:500],
                        "contract": contract, "market_id": p.market_id})
@@ -145,6 +173,7 @@ def make_predictor(settings):
             artifact = MODEL_ROOT / artifact
     scorer = PositionRidge(artifact)
     return Predictor(settings.news_model_path, cache_path=settings.news_feature_cache, max_calls=1,
+                     max_age_seconds=settings.news_max_age_seconds,
                      client=CacheOnlyClient(scorer.evidence_model))
 
 
@@ -152,7 +181,8 @@ def ingest(session, basket, article_data, predictor, now=None):
     from headline_model.records import Article
     now = now or utcnow()
     article = Article.parse(article_data)
-    if not article.is_fresh(now):
+    max_age = getattr(predictor, "max_age_seconds", 3600)
+    if not article.is_fresh(now, max_age=max_age):
         raise NewsError("Article is stale or future-dated")
     article_dict = dict(article.__dict__)
     saved, skipped = [], []
@@ -160,7 +190,7 @@ def ingest(session, basket, article_data, predictor, now=None):
     for topic in topics["topics"]:
         contract = topic["contract"]
         key = digest({"basket": basket.id, "article": article_dict, "contract": contract,
-                      "artifact": predictor.artifact_hash})
+                      "artifact": predictor.artifact_hash, "max_age_seconds": max_age})
         old = session.get(NewsSignal, key)
         if old:
             saved.append(key)
@@ -176,6 +206,8 @@ def ingest(session, basket, article_data, predictor, now=None):
         if result.get("reason") == "model_call_budget_reached":
             skipped.append({"market_id": topic["market_id"], "reason": "missing_cached_evidence"})
             continue
+        # Preserve the trusted server-side freshness policy with the verified result.
+        result = {**result, "max_age_seconds": max_age}
         session.add(NewsSignal(id=key, basket_id=basket.id, market_id=topic["market_id"],
                               side=contract["outcome"].lower(), published_at=utc(article.published_at),
                               payload={"article": article_dict, "result": result,
@@ -202,6 +234,8 @@ def available_signals(session, basket, account=None, now=None):
     ).order_by(NewsSignal.published_at.desc())).all()
     unique, result = set(), []
     for sig in signals:
+        if signal_expires_at(sig) <= now or as_utc(sig.published_at) > now:
+            continue
         spec = specs.get(sig.market_id)
         if not spec or sig.id in consumed or spec["outcome"].lower() != sig.side:
             continue

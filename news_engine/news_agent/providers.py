@@ -99,11 +99,12 @@ def parse_feed(body: bytes, source: str) -> tuple[list[Article], int]:
 def collect(store: Store, http: HTTP, topics: list[dict], provider: str, *, feeds=None,
             news_key: str = '', ttl: int = 120, now: datetime | None = None,
             max_age: int = 3600) -> dict:
-    if ttl < 0 or max_age <= 0 or max_age > 3600:
-        raise AgentError('Cache TTL must be nonnegative and headline age at most one hour.')
+    if ttl < 0 or isinstance(max_age, bool) or not isinstance(max_age, int) or not 1 <= max_age <= 86400:
+        raise AgentError('Cache TTL must be nonnegative and headline age at most 24 hours.')
     now = now or datetime.now(timezone.utc)
     errors, found = [], {}
-    counters = {'cache_hits': 0, 'invalid_records': 0, 'stale_or_future': 0}
+    counters = {'cache_hits': 0, 'invalid_records': 0, 'stale_or_future': 0,
+                'records_seen': 0, 'fresh_records': 0, 'unmatched_fresh': 0}
     if provider == 'newsapi' and not news_key.strip():
         raise AgentError('NEWS_API_KEY is required for NewsAPI; a Meta key is not interchangeable.')
     if provider not in {'rss', 'newsapi'}:
@@ -151,11 +152,14 @@ def collect(store: Store, http: HTTP, topics: list[dict], provider: str, *, feed
                         counters['invalid_records'] += 1
                 store.cache(key, [a.__dict__ for a in parsed], now)
             for article in parsed:
+                counters['records_seen'] += 1
                 if not article.is_fresh(now, max_age):
                     counters['stale_or_future'] += 1
                     continue
+                counters['fresh_records'] += 1
                 eligible = [target_topic] if target_topic else [topic for topic in topics if matches(article, topic)]
                 if not eligible:
+                    counters['unmatched_fresh'] += 1
                     continue
                 article_id = store.record_article(article)
                 entry = found.setdefault(article_id, {'article_id': article_id, 'topic_ids': []})
