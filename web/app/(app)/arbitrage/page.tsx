@@ -1,5 +1,8 @@
-"use client";
+import { notFound } from "next/navigation";
+import { ARBITRAGE_ENABLED } from "@/lib/arbitrage";
+import { Scanner } from "./Scanner";
 
+<<<<<<< HEAD
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
@@ -793,4 +796,9 @@ function LocksTable({ locks }: { locks: Lock[] }) {
       </tbody>
     </table>
   );
+=======
+export default function Page() {
+  if (!ARBITRAGE_ENABLED) notFound();
+  return <Scanner />;
+>>>>>>> 0f9cfe70a8ef12a279519c0fcd1fd88ef043985d
 }
