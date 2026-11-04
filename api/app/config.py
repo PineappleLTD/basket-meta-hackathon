@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     live_refresh_seconds: float = 10
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     # Meta Model API key (starts with LLM_). Read from META (unprefixed) or PMETF_META_API_KEY.
-    meta_api_key: str | None = Field(default=None, validation_alias=AliasChoices("META", "PMETF_META_API_KEY"))
+    meta_api_key: str | None = Field(default=None, validation_alias=AliasChoices("META", "PMETF_META_API_KEY", "MODEL_API_KEY"))
     llama_model: str = "muse-spark-1.3"
     llama_base_url: str = "https://api.meta.ai/v1"
     # Names saved baskets. Run at minimal reasoning so a save waits about a second.
@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     # Classification is cache-only here. Extraction belongs to the separately budgeted news agent.
     news_model_path: str | None = None
     news_feature_cache: str | None = None
+    # App-managed discovery. Paid limits are persistent totals across baskets/restarts,
+    # not allowances that reset every poll. Increase only with an approved budget.
+    news_monitor_enabled: bool = True
+    news_monitor_interval_seconds: float = Field(default=120, ge=10, le=86400)
+    news_monitor_state: str = str(API_DIR / "data" / "news-agent.sqlite3")
+    news_monitor_discovery_limit: int = Field(default=10, ge=0)
+    news_monitor_evidence_limit: int = Field(default=10, ge=0)
+    news_monitor_retry_errors: bool = False
     # Never inferred from Meta credentials. External execution is off by default.
     live_enabled: bool = False
     live_environment: str = "demo"

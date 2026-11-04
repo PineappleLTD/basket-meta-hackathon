@@ -22,11 +22,16 @@ export interface NewsCycle {
   buys: { market_id: number; side: Side; count: number; filled: number }[];
   proceeds_cents: number; spent_cents: number;
 }
+export interface NewsMonitoring {
+  status: string; note: string; checked_at: string | null; interval_seconds: number;
+  requests: Record<"discovery" | "evidence", { used: number; limit: number }>;
+}
 export interface Climate {
   regime: Regime; intensity: number; summary: string; as_of: string;
   topics: TopicPressure[]; signals: ClimateSignal[]; settings: ClimateSettings;
   proposal: { id: string; shifts: Shift[]; reason: string | null };
   cycle: NewsCycle | null; basket_cash: number; missing_rules: string[]; execution_mode: "paper";
+  monitoring?: NewsMonitoring;
 }
 export const turnover = (shifts: Shift[]) =>
   shifts.reduce((sum, shift) => sum + Math.abs(shift.proposed_weight - shift.current_weight), 0) / 2;

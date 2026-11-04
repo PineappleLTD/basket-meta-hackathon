@@ -1,4 +1,4 @@
-"""Logical-consistency arbitrage: what the scanner found, rescans, model-proposed pairs, and locking."""
+"""Arbitrage: what the scanner found, rescans, and locking."""
 
 from datetime import datetime
 
@@ -9,7 +9,6 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.arb_models import ArbOpportunity, ArbScan, LockBasket
 from app.auth import CurrentUser
 from app.db import SessionDep
-from app.llm import LLMError
 from app.models import AccountMode, as_utc, utcnow
 from app.routers.accounts import _RACE, AccountDep, BrokerDep, _account_out
 from app.routers.common import sync_fresh
@@ -18,14 +17,10 @@ from app.schemas import (
     ArbLegOut,
     ArbSummaryOut,
     BasketOrderOut,
-    ImplicationIn,
-    ImplicationOut,
-    ImplicationsOut,
     LockIn,
     LockOut,
     LockPreviewOut,
     LockResultOut,
-    MarketOut,
     OpportunityOut,
     PlannedOrderOut,
     ScanIn,
@@ -46,7 +41,6 @@ def opportunity_out(o: ArbOpportunity, now: datetime) -> OpportunityOut:
     return OpportunityOut(
         id=o.id,
         kind=o.kind,
-        guaranteed=o.guaranteed,
         title=o.title,
         explanation=o.explanation,
         legs=[ArbLegOut(**leg) for leg in o.legs],
@@ -90,8 +84,8 @@ def lock_out(lock: LockBasket, status: tuple[str, int] | None = None) -> LockOut
 
 def _arbitrage_out(session, user) -> ArbitrageOut:
     now = utcnow()
-    s = svc.summary(session, user)
-    active, recent = svc.opportunities(session, now)
+    active = svc.opportunities(session)
+    s = svc.summary(session, user, active)
     return ArbitrageOut(
         summary=ArbSummaryOut(
             scans=s.scans,
@@ -106,7 +100,6 @@ def _arbitrage_out(session, user) -> ArbitrageOut:
             locked_profit=(s.locked_payout_cents - s.locked_cost_cents) / 100,
         ),
         opportunities=[opportunity_out(o, now) for o in active],
-        implications=[opportunity_out(o, now) for o in recent],
     )
 
 
@@ -118,7 +111,7 @@ def get_arbitrage(session: SessionDep, user: CurrentUser):
 
 @router.post("/arbitrage/scan", response_model=ArbitrageOut)
 def rescan(body: ScanIn, request: Request, session: SessionDep, user: CurrentUser):
-    """Scan now: screen every ladder, deadline pair and bracket at the stored quotes, price the
+    """Scan now: screen every ladder and bracket at the stored quotes, price the
     promising ones against the live order books, and log what pays. `sync` first pulls fresh
     markets from Kalshi (about half a minute), which scans as part of the sync."""
     state = request.app.state
@@ -134,42 +127,6 @@ def rescan(body: ScanIn, request: Request, session: SessionDep, user: CurrentUse
         with state.sync_lock:
             svc.scan(session, broker)
     return _arbitrage_out(session, user)
-
-
-@router.post("/arbitrage/implications", response_model=ImplicationsOut)
-def find_implications(body: ImplicationIn, request: Request, session: SessionDep, _user: CurrentUser):
-    """Ask the model which markets about `query` imply one another, then check each pair's prices.
-
-    Pairs priced as if the implication ran backwards are logged as `implication` opportunities.
-    They're never called guaranteed: the link rests on the model's reading of two questions.
-    Makes one model call, so it takes a few seconds.
-    """
-    llm = request.app.state.llm
-    if llm is None:
-        raise HTTPException(503, "No model API key configured (set META in .env)")
-    try:
-        considered, pairs = svc.implications(session, llm, body.query)
-    except svc.ImplicationError as e:
-        raise HTTPException(422, str(e)) from e
-    except LLMError as e:
-        raise HTTPException(502, str(e)) from e
-    return ImplicationsOut(
-        query=body.query,
-        candidates_considered=considered,
-        pairs=[
-            ImplicationOut(
-                if_market=MarketOut.model_validate(p.if_market),
-                then_market=MarketOut.model_validate(p.then_market),
-                relation=p.relation,
-                confidence=p.confidence,
-                reason=p.reason,
-                edge_per_set=p.edge_per_set,
-                mispriced=p.edge_per_set is not None and p.edge_per_set > 0,
-                opportunity_id=p.opportunity_id,
-            )
-            for p in pairs
-        ],
-    )
 
 
 @router.get("/accounts/{mode}/arbitrage/locks", response_model=list[LockOut])
@@ -191,8 +148,7 @@ def lock_opportunity(
     """Buy one contract of every leg per set into a lock basket that's held to settlement. Paper only.
 
     Re-prices against the live order books first and refuses (409) if it no longer pays. Without
-    `sets`, buys the most profitable size the books allow. If a leg fills short, the other legs' extra
-    contracts are sold back so every leg holds the same count; if any leg fills nothing, nothing is
+    `sets`, buys the most profitable size the books allow. Every leg fills in full or nothing is
     locked. `dry_run` returns the priced orders without placing them. A second lock of the same
     opportunity adds to the same basket.
     """
@@ -248,6 +204,5 @@ def lock_opportunity(
         lock=lock_out(result.lock, svc.lock_status(account, result.basket.id, session)),
         basket_order=BasketOrderOut.model_validate(result.record),
         filled_sets=result.sets,
-        note=result.note,
         account=_account_out(account, broker),
     )

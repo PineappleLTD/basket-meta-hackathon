@@ -1,4 +1,4 @@
-"""Additive tables for the logical-consistency arbitrage scanner; existing tables stay intact."""
+"""Additive tables for the arbitrage scanner; existing tables stay intact."""
 
 from datetime import datetime
 
@@ -10,15 +10,11 @@ from app.models import utcnow
 
 
 class MarketTerms(Base):
-    """How a market relates to its siblings on Kalshi, written on every sync.
+    """A market's strike and event, written on every sync, for the arbitrage scanner."""
 
-    Kept beside `markets` so existing databases need no ALTER TABLE.
-    """
-
-    __tablename__ = "market_terms"
+    __tablename__ = "arb_terms"
 
     market_id: Mapped[int] = mapped_column(ForeignKey("markets.id", ondelete="CASCADE"), primary_key=True)
-    series_ticker: Mapped[str | None] = mapped_column(String(200), index=True)
     # "greater" (YES above floor_strike), "less" (below cap_strike), "between", "custom", ...
     strike_type: Mapped[str | None] = mapped_column(String(32))
     floor_strike: Mapped[float | None]
@@ -30,15 +26,9 @@ class MarketTerms(Base):
     mutually_exclusive: Mapped[bool] = mapped_column(default=False)
     # Active markets in the event when last synced, counting ones the volume filter dropped.
     event_size: Mapped[int | None]
-    # Hash of the rules with dates and times blanked out: equal templates differ only in their dates.
-    template: Mapped[str | None] = mapped_column(String(32))
-    # Hash of the rules with the market's own strike blanked out: equal ones differ only in the strike,
-    # so they measure the same thing against different thresholds.
+    # Hash of the rules with the market's own strike blanked out: equal ones measure the same thing
+    # against different thresholds.
     strike_template: Mapped[str | None] = mapped_column(String(32))
-    # A "happens by <date>" market: it can resolve YES early, and its rules give a window.
-    cumulative: Mapped[bool] = mapped_column(default=False)
-    # Start of the window a cumulative market counts over: a date its rules name, else when it opened.
-    window_start: Mapped[datetime | None]
     updated_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -53,9 +43,9 @@ class ArbOpportunity(Base):
 
     # Hash of the kind and its legs.
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    # ladder | time | bracket_no | bracket_yes | implication
+    # ladder | bracket_no | bracket_yes
     kind: Mapped[str] = mapped_column(String(16))
-    # False only for implications, which rest on a model's reading of two questions.
+    # Always true now; kept so existing tables need no ALTER TABLE.
     guaranteed: Mapped[bool] = mapped_column(default=True)
     title: Mapped[str] = mapped_column(Text)
     explanation: Mapped[str] = mapped_column(Text)

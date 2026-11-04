@@ -1,4 +1,4 @@
-"""The logical-consistency scanner and locked arbitrage baskets, against a fake Kalshi with
+"""The arbitrage scanner and locked arbitrage baskets, against a fake Kalshi with
 one of each structure priced to break its rule (and a few that look broken but aren't)."""
 
 from datetime import UTC, datetime
@@ -20,18 +20,14 @@ from tests.fake_kalshi import FakeKalshi
 PAPER = "/accounts/paper"
 FEE = 0.07
 
-DEFAULT_RULES = "If the United States fails to make a scheduled payment on its debt before Jan 1, {year}, then the market resolves to Yes."
-CPI_RULES = "If CPI year-over-year for {month} 2026 is above 3.0%, then the market resolves to Yes."
-OCCURS = "If this event occurs, the market will close the following 10am ET."
 
 
 def _dt(day: str) -> datetime:
     return datetime.fromisoformat(day).replace(tzinfo=UTC)
 
 
-def _md(ticker, event, series, question, bid, ask, closes, **terms) -> MarketData:
+def _md(ticker, event, question, bid, ask, closes, **terms) -> MarketData:
     rules = terms.pop("rules", None)
-    opened = terms.pop("opened", None)
     return MarketData(
         external_id=ticker,
         question=question,
@@ -44,8 +40,6 @@ def _md(ticker, event, series, question, bid, ask, closes, **terms) -> MarketDat
         yes_ask=ask,
         resolution_rules=rules,
         resolution_deadline=_dt(closes) if rules else None,
-        series_ticker=series,
-        opened_at=_dt(opened) if opened else None,
         **terms,
     )
 
@@ -64,7 +58,7 @@ CLIMATE_RULES = "If the US has {} million metric tonnes of CO2 emissions or fewe
 
 
 def _fed(strike, bid, ask):
-    return _md(f"{LADDER}-T{strike}", LADDER, "ARBFED", FED_Q, bid, ask, "2026-12-10", strike_type="greater",
+    return _md(f"{LADDER}-T{strike}", LADDER, FED_Q, bid, ask, "2026-12-10", strike_type="greater",
                floor_strike=float(strike), outcome=f"Above {strike}%", rules=FED_RULES.format(strike))
 
 
@@ -76,44 +70,29 @@ MARKETS = [
     # Look like ladders priced backwards, but aren't. Kalshi labels "exactly 4" and "exactly 9" as
     # "less" with floor = cap, in a mutually exclusive event: they exclude each other, they don't nest.
     *[
-        _md(f"ARB-STAR-26-{n}.0", "ARB-STAR-26", "ARBSTAR", f"Will exactly {n} Starship launches reach space?", bid, ask,
+        _md(f"ARB-STAR-26-{n}.0", "ARB-STAR-26", f"Will exactly {n} Starship launches reach space?", bid, ask,
             "2027-01-01", strike_type="less", floor_strike=float(n), cap_strike=float(n), outcome=str(n),
             mutually_exclusive=True, event_size=2, rules=STAR_RULES.format(n))
         for n, bid, ask in ((4, 0.50, 0.58), (9, 0.01, 0.02))
     ],
     # One event, two different goals: emissions under one line by 2025, under another by 2030.
     *[
-        _md(f"ARB-CLIM-{year}", "ARB-CLIM", "ARBCLIM", "US meets its climate goals?", bid, ask, f"{year + 5}-12-31",
+        _md(f"ARB-CLIM-{year}", "ARB-CLIM", "US meets its climate goals?", bid, ask, f"{year + 5}-12-31",
             strike_type="less_or_equal", cap_strike=cap, outcome=f"By {year}", rules=CLIMATE_RULES.format(cap, year))
         for year, cap, bid, ask in ((2025, 4909.9, 0.073, 0.129), (2030, 3317.5, 0.161, 0.196))
     ],
-    # Time nesting: default by 2027 is bid above default by 2028's offer. The 2029 market opened
-    # later than both, so its window doesn't contain theirs and it pairs with neither.
-    _md("ARB-DEF-26DEC31", "ARB-DEF-26DEC31", "ARBDEF", "Will the US default before 2027?", 0.08, 0.09, "2027-01-01",
-        rules=DEFAULT_RULES.format(year=2027), early_close=OCCURS, opened="2026-01-01"),
-    _md("ARB-DEF-27DEC31", "ARB-DEF-27DEC31", "ARBDEF", "Will the US default before 2028?", 0.04, 0.05, "2028-01-01",
-        rules=DEFAULT_RULES.format(year=2028), early_close=OCCURS, opened="2025-06-01"),
-    _md("ARB-DEF-28DEC31", "ARB-DEF-28DEC31", "ARBDEF", "Will the US default before 2029?", 0.02, 0.03, "2029-01-01",
-        rules=DEFAULT_RULES.format(year=2029), early_close=OCCURS, opened="2026-06-01"),
-    # Same rules apart from the month, priced "backwards", but not cumulative: two different readings.
-    _md("ARB-CPI-26NOV", "ARB-CPI-26NOV", "ARBCPI", "CPI above 3.0% in November 2026?", 0.60, 0.62, "2026-12-15",
-        strike_type="custom", rules=CPI_RULES.format(month="November"),
-        early_close="This market will close and expire early if the event occurs.", opened="2026-10-01"),
-    _md("ARB-CPI-26DEC", "ARB-CPI-26DEC", "ARBCPI", "CPI above 3.0% in December 2026?", 0.28, 0.30, "2027-01-15",
-        strike_type="custom", rules=CPI_RULES.format(month="December"),
-        early_close="This market will close and expire early if the event occurs.", opened="2026-09-01"),
     # Mutually exclusive outcomes whose YES bids add up past $1: NO on all three pays at least $2.
     *[
-        _md(f"ARB-NOM-28-{name}", "ARB-NOM-28", "ARBNOM", f"Will {name} be the 2028 nominee?", bid, ask, "2028-08-01",
+        _md(f"ARB-NOM-28-{name}", "ARB-NOM-28", f"Will {name} be the 2028 nominee?", bid, ask, "2028-08-01",
             strike_type="custom", outcome=name, mutually_exclusive=True, event_size=3)
         for name, bid, ask in (("ALPHA", 0.55, 0.57), ("BETA", 0.50, 0.52), ("GAMMA", 0.03, 0.04))
     ],
     # Ranges covering every price, offered at 30c each: YES on all three costs 90c for exactly $1.
-    _md("ARB-BTC-26DEC31-T100", "ARB-BTC-26DEC31", "ARBBTC", "BTC on Dec 31?", 0.28, 0.30, "2026-12-31",
+    _md("ARB-BTC-26DEC31-T100", "ARB-BTC-26DEC31", "BTC on Dec 31?", 0.28, 0.30, "2026-12-31",
         strike_type="less", cap_strike=100, outcome="Below 100", mutually_exclusive=True, event_size=3),
-    _md("ARB-BTC-26DEC31-B105", "ARB-BTC-26DEC31", "ARBBTC", "BTC on Dec 31?", 0.28, 0.30, "2026-12-31",
+    _md("ARB-BTC-26DEC31-B105", "ARB-BTC-26DEC31", "BTC on Dec 31?", 0.28, 0.30, "2026-12-31",
         strike_type="between", floor_strike=100, cap_strike=109.99, outcome="100 to 109.99", mutually_exclusive=True, event_size=3),
-    _md("ARB-BTC-26DEC31-T109.99", "ARB-BTC-26DEC31", "ARBBTC", "BTC on Dec 31?", 0.28, 0.30, "2026-12-31",
+    _md("ARB-BTC-26DEC31-T109.99", "ARB-BTC-26DEC31", "BTC on Dec 31?", 0.28, 0.30, "2026-12-31",
         strike_type="greater", floor_strike=109.99, outcome="110 or above", mutually_exclusive=True, event_size=3),
 ]
 
@@ -183,24 +162,6 @@ def _lock(client, opp_id, **body):
 # ---- Terms -------------------------------------------------------------------------------------------
 
 
-def test_rules_template_ignores_dates_but_not_other_numbers():
-    by_2027 = "Resolves Yes if it happens from October 9, 2026 at 4:00:00 PM EDT until December 1, 2026."
-    by_2028 = "Resolves Yes if it happens from October 8, 2026 at 8:00 PM EDT until January 1, 2027."
-    assert arbitrage.rules_template(by_2027) == arbitrage.rules_template(by_2028)
-    # A Category 3 landfall and a Category 4 one are different events, whatever their dates.
-    assert arbitrage.rules_template("A Category 3 hurricane before 2027") != arbitrage.rules_template(
-        "A Category 4 hurricane before 2027"
-    )
-
-
-def test_window_start_reads_explicit_dates_else_issuance():
-    opened = _dt("2026-01-05")
-    explicit = "If a landfall occurs from October 9, 2026 at 4:00:00 PM EDT until, but excluding, December 1, 2026"
-    assert arbitrage.window_start(explicit, opened) == datetime(2026, 10, 9, 16, 0, tzinfo=UTC)
-    assert arbitrage.window_start("is above $109 between Issuance and Nov 30, 2026", opened) == opened
-    assert arbitrage.window_start("fails to pay before Jan 1, 2027", opened) == opened
-
-
 def test_strike_template_matches_rules_that_differ_only_in_their_strike():
     fed = [arbitrage.strike_template(FED_RULES.format(s), float(s), None) for s in ("3.75", "4.00", "4.25")]
     assert len(set(fed)) == 1
@@ -211,19 +172,6 @@ def test_strike_template_matches_rules_that_differ_only_in_their_strike():
     assert arbitrage.strike_template("above $67,500.00 at 5pm", 67500.0, None) == arbitrage.strike_template(
         "above $68,000 at 5pm", 68000.0, None
     )
-
-
-def _market(ticker) -> MarketData:
-    return next(m for m in MARKETS if m.external_id == ticker)
-
-
-def test_only_markets_that_can_happen_early_inside_a_window_are_cumulative():
-    assert arbitrage.terms_values(_market("ARB-DEF-26DEC31"))["cumulative"] is True
-    # Closes early when the number comes out, but over no window.
-    assert arbitrage.terms_values(_market("ARB-CPI-26NOV"))["cumulative"] is False
-    # Rules that name a deadline but can't resolve early (a price at a moment).
-    btc = _md("X", "X", "S", "BTC at 5pm?", 0.4, 0.5, "2026-12-01", rules="Above $100k before 5 PM EST on Dec 1, 2026")
-    assert arbitrage.terms_values(btc)["cumulative"] is False
 
 
 def _rows(*spans, size=None):
@@ -261,21 +209,19 @@ def test_ranges_must_cover_every_outcome():
 
 def test_scan_after_sync_finds_one_of_each_structure(client):
     found = _by_kind(client)
-    assert sorted(found) == ["bracket_no", "bracket_yes", "ladder", "time"]
+    assert sorted(found) == ["bracket_no", "bracket_yes", "ladder"]
     assert all(len(v) == 1 for v in found.values())
-    assert all(o["confirmed"] and o["profit"] > 0 and o["guaranteed"] for v in found.values() for o in v)
+    assert all(o["confirmed"] and o["profit"] > 0 for v in found.values() for o in v)
 
     ladder = found["ladder"][0]
     assert [(leg["ticker"], leg["side"]) for leg in ladder["legs"]] == [(LOW, "yes"), (HIGH, "no")]
-    time = found["time"][0]
-    assert [(leg["ticker"], leg["side"]) for leg in time["legs"]] == [("ARB-DEF-27DEC31", "yes"), ("ARB-DEF-26DEC31", "no")]
     nom = found["bracket_no"][0]
     assert {leg["side"] for leg in nom["legs"]} == {"no"} and len(nom["legs"]) == 3
     assert nom["payout_per_set"] == 2
     assert len(found["bracket_yes"][0]["legs"]) == 3
 
     summary = client.get("/arbitrage").json()["summary"]
-    assert summary["scans"] == 1 and summary["active"] == 4 and summary["opportunities_seen"] == 4
+    assert summary["scans"] == 1 and summary["active"] == 3 and summary["opportunities_seen"] == 3
     assert summary["profit_available"] == pytest.approx(sum(o["profit"] for v in found.values() for o in v))
 
 
@@ -290,12 +236,6 @@ def test_ladder_sized_at_the_most_profitable_depth(client):
     assert opp["annualized"] > opp["return_pct"] > 0
 
 
-def test_unrelated_deadlines_and_late_windows_never_pair(client):
-    time_legs = {leg["ticker"] for o in _by_kind(client)["time"] for leg in o["legs"]}
-    assert "ARB-DEF-28DEC31" not in time_legs
-    assert not time_legs & {"ARB-CPI-26NOV", "ARB-CPI-26DEC"}
-
-
 def test_markets_that_share_an_event_but_dont_nest_are_no_ladder(client):
     """Both priced "backwards"; neither is a ladder (see the fixtures)."""
     legs = {leg["ticker"] for v in _by_kind(client).values() for o in v for leg in o["legs"]}
@@ -308,7 +248,7 @@ def test_rescan_retires_what_closed_and_keeps_the_log(client, fake):
     fake.books[HIGH] = _book(0.38, 0.40)  # NO now costs 62c: the gap is gone
     body = client.post("/arbitrage/scan", json={}).json()
     assert ladder_id not in {o["id"] for o in body["opportunities"]}
-    assert body["summary"]["scans"] == 2 and body["summary"]["opportunities_seen"] == 4
+    assert body["summary"]["scans"] == 2 and body["summary"]["opportunities_seen"] == 3
     assert body["summary"]["best_profit_seen"] > body["summary"]["profit_available"]
 
 
@@ -330,7 +270,7 @@ def test_preview_then_lock_buys_matched_legs(client, session):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     lock = body["lock"]
-    assert body["filled_sets"] == 200 and body["note"] is None
+    assert body["filled_sets"] == 200
     assert (lock["sets"], lock["payout"], lock["status"], lock["held_sets"]) == (200, 200, "locked", 200)
     assert lock["cost"] == opp["cost"] and lock["profit"] > 0
     assert body["basket_order"]["origin"] == "arbitrage"
@@ -366,7 +306,7 @@ def test_lock_refused_once_the_gap_closes(client, fake):
     assert client.get(PAPER).json()["cash"] == 10_000
 
 
-def test_short_fill_sells_back_the_extra_so_legs_match(client, fake, monkeypatch):
+def test_nothing_locked_when_a_leg_fills_short(client, fake, monkeypatch):
     opp = _ladder(client)
     full = fake.fetch_orderbooks
 
@@ -378,11 +318,9 @@ def test_short_fill_sells_back_the_extra_so_legs_match(client, fake, monkeypatch
         return books
 
     monkeypatch.setattr(fake, "fetch_orderbooks", thin_when_buying_high)
-    body = _lock(client, opp["id"]).json()
-    assert body["filled_sets"] == 120 and "sold back" in body["note"]
-    held = next(b for b in body["account"]["baskets"] if b["basket_id"] == body["lock"]["basket_id"])
-    assert {h["contracts"] for h in held["holdings"]} == {120}
-    assert body["lock"]["held_sets"] == 120 and body["lock"]["payout"] == 120
+    resp = _lock(client, opp["id"])
+    assert resp.status_code == 409 and "nothing was locked" in resp.json()["detail"]
+    assert client.get(PAPER).json()["cash"] == 10_000
 
 
 def test_nothing_locked_when_a_leg_fills_nothing(client, fake, monkeypatch):
@@ -457,52 +395,3 @@ def test_settlement_pays_the_locked_floor(client, fake):
 def test_lock_404_and_live_mode(client):
     assert _lock(client, "nope").status_code == 404
     assert client.post("/accounts/live/arbitrage/x/lock", json={}).status_code == 501
-
-
-# ---- Implications (model-proposed, never guaranteed) ----------------------------------------------
-
-
-class ImplyLLM:
-    def __init__(self, pairs):
-        self.pairs = pairs
-        self.prompts = []
-
-    def complete_json(self, system, user, schema):
-        self.prompts.append(user)
-        return {"pairs": self.pairs}
-
-
-def test_implications_check_prices_and_are_never_lockable(client, app, session):
-    ids = {m.external_id: m.id for m in session.query(Market)}
-    fed, recession = ids["MOCK-FEDCUT-26DEC"], ids["MOCK-RECSS-27"]
-    app.state.llm = ImplyLLM([
-        # Priced backwards: the "if" side trades at 62c and the "then" side at 27c.
-        {"if_id": fed, "then_id": recession, "relation": "causal", "reason": "Cuts mean a slowdown.", "confidence": 0.6},
-        {"if_id": recession, "then_id": fed, "relation": "causal", "reason": "Recessions bring cuts.", "confidence": 0.8},
-        {"if_id": 99999, "then_id": fed, "relation": "definitional", "reason": "Made up.", "confidence": 1},
-        # Same event: the scanner's job, not the model's.
-        {"if_id": ids[HIGH], "then_id": ids[LOW], "relation": "definitional", "reason": "Ladder.", "confidence": 1},
-    ])  # fmt: skip
-
-    resp = client.post("/arbitrage/implications", json={"query": "fed recession"})
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert [(p["if_market"]["id"], p["mispriced"]) for p in body["pairs"]] == [(fed, True), (recession, False)]
-    mispriced = body["pairs"][0]
-    assert mispriced["edge_per_set"] > 0 and mispriced["opportunity_id"]
-
-    [logged] = client.get("/arbitrage").json()["implications"]
-    assert logged["id"] == mispriced["opportunity_id"] and logged["guaranteed"] is False
-    assert [(leg["side"]) for leg in logged["legs"]] == ["yes", "no"]
-    resp = _lock(client, logged["id"])
-    assert resp.status_code == 409 and "model's reading" in resp.json()["detail"]
-    # Never counted with the guaranteed kinds.
-    assert client.get("/arbitrage").json()["summary"]["opportunities_seen"] == 4
-
-
-def test_implications_need_a_model_and_matching_markets(client, app):
-    app.state.llm = None
-    assert client.post("/arbitrage/implications", json={"query": "fed"}).status_code == 503
-    app.state.llm = ImplyLLM([])
-    resp = client.post("/arbitrage/implications", json={"query": "zzzz qqqq"})
-    assert resp.status_code == 422

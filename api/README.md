@@ -11,8 +11,13 @@ cd api
 .venv/bin/python -m pytest
 ```
 
+For app-managed news monitoring, install `requirements-news.txt` from the repository
+root into the same Python environment used by the API. See [NEWS_MONITOR.md](../NEWS_MONITOR.md)
+for startup, the shared request allowance, monitoring status, and recovery.
+
 The SQLite file lives at `api/data/app.db` and is created on startup; tables come from
-`Base.metadata.create_all` (no migrations yet, so delete the file after schema changes).
+`Base.metadata.create_all`. The news monitor adds tables without replacing existing data;
+do not delete an existing database to enable it.
 Users, baskets and basket positions are kept apart in `api/data/shared.db` (attached as
 schema `shared`), which is small and committed to git. Positions name their market by Kalshi
 ticker, since market ids differ between databases. Sessions, NAV history and trading stay in
@@ -41,7 +46,7 @@ Env vars (or `.env` at the repo root / in `api/`), all prefixed `PMETF_`:
 | `PMETF_PAPER_QUOTE_CACHE_SECONDS`  | `15` – how long a fetched order book is reused (preview, then the order)      |
 | `PMETF_PAPER_MAX_QUOTE_AGE_MINUTES`| `30` – oldest stored quote paper fills fall back to when Kalshi is unreachable |
 | `PMETF_CORS_ORIGINS`               | `["http://localhost:3000", "http://localhost:5173"]`                          |
-| `META` (or `PMETF_META_API_KEY`)   | unset – Meta Model API key (`LLM_…`); `/theses/select` returns 503 without it |
+| `META` (or `PMETF_META_API_KEY`, `MODEL_API_KEY`) | unset – server-side Meta key; `/theses/select` returns 503 without it |
 | `PMETF_LLAMA_MODEL`                | `muse-spark-1.3`                                                              |
 | `PMETF_LLAMA_BASE_URL`             | `https://api.meta.ai/v1`                                                      |
 | `PMETF_LLAMA_NAMER_MODEL`          | `muse-spark-1.1` – titles baskets saved without a name, at minimal reasoning  |
@@ -122,16 +127,12 @@ contracts (one of every leg) that pays a floor whatever happens:
   thresholds in the same event, the event can't be mutually exclusive, and their rules must
   match once each market's own strike is blanked. (One event can hold unrelated goals, and
   Kalshi labels "exactly N" buckets as `less` with floor = cap; neither is a ladder.)
-- **Deadline pairs** (`time`): "by June" implies "by December". Both must be cumulative (they
-  close early when the event happens, and their rules give a window), their rules must match
-  apart from dates and times, and the later one's window must start no later than the earlier
-  one's (an explicit "from <date>" in the rules, else when the market opened).
 - **Brackets** (`bracket_no`, `bracket_yes`): at most one market of a mutually exclusive event
   wins, so NO on k of them pays at least k − 1 (the subset with the best return is used). When
   every one of the event's markets is synced and their ranges leave no value uncovered, YES on
   all of them pays exactly $1.
 
-Each sync stores every market's strike, event and rule templates (`market_terms`), then
+Each sync stores every market's strike, event and rule template (`arb_terms`), then
 `refresh` scans: every group is screened at the stored top of book, the 60 best within a cent
 of paying are priced against the live order books with Kalshi's fees, and each is sized at
 the number of sets that makes the most money. What pays is upserted into
@@ -140,16 +141,11 @@ marked inactive, so the table is the benchmark; `arb_scans` logs every pass.
 
 **Locks** (paper only) buy one contract of every leg per set into a basket marked in
 `lock_baskets`. They re-price against the live books first (409 if the gap closed or a size
-doesn't pay), check cash, and buy every leg; if one fills short, the others' extra contracts
-are sold back so the legs match, and if one fills nothing, nothing is locked. Lock baskets
+doesn't pay), check cash, and buy every leg in full; if any leg fills short, the whole lock rolls back and
+nothing is bought. Lock baskets
 refuse buys by weight, rebalances (holdings or index), partial sells, automations,
 conditional orders, news shifts and exchange connection; selling everything unwinds them, and
 settlement pays the floor out as usual.
-
-**Implications** across events ("a recession in 2027" and "the Fed cuts") need a model to read
-the questions, so they run on demand: the model proposes pairs among markets matching a query,
-and code checks the price rule (the implied market can't be the less likely one). Pairs priced
-backwards are logged as `implication` opportunities with `guaranteed: false` and can't be locked.
 
 ## Layout
 
@@ -195,7 +191,7 @@ backwards are logged as `implication` opportunities with `guaranteed: false` and
 - `app/services/automation.py` – conditional orders, recurring buys and auto-rebalancing, run
   after each sync.
 - `app/services/arbitrage.py` – the arbitrage scanner: market terms from each sync, screening,
-  sizing against order books, the opportunity log, locks, and model-proposed implications.
+  sizing against order books, the opportunity log, and locks.
   `app/arb_models.py` holds its tables, additive so existing databases need no migration.
 - `app/auth.py` – password hashing, sessions, and the `CurrentUser` dependency routes use to
   require sign-in.
@@ -235,8 +231,7 @@ backwards are logged as `implication` opportunities with `guaranteed: false` and
 | GET          | `/accounts/{mode}/conditional-orders`     | 🔒 newest first; `basket_id`, `status`                                                                                                                                                                                                                                                                                                                   |
 | POST         | `/accounts/{mode}/baskets/{id}/conditional-orders` | 🔒 `{action, amount, condition: at_or_below\|at_or_above, nav}`; amount is dollars for a buy, a 0–1 share for a sell; 409 if the NAV is already there                                                                                                                                                                                         |
 | DELETE       | `/accounts/{mode}/conditional-orders/{id}`| 🔒 cancel; 409 if it already fired                                                                                                                                                                                                                                                                                                                      |
-| GET          | `/arbitrage`                              | 🔒 open opportunities (most profit first), implications checked in the last day, and the benchmark summary: scans, opportunities logged, profit open now, your locks |
+| GET          | `/arbitrage`                              | 🔒 open opportunities (most profit first) and the benchmark summary: scans, opportunities logged, profit open now, your locks |
 | POST         | `/arbitrage/scan`                         | 🔒 `{sync?=false}`; scan now (about a second), or sync Kalshi first (about 30s, which scans) |
-| POST         | `/arbitrage/implications`                 | 🔒 `{query}` → model-proposed pairs with relation, confidence and price check; logs pairs priced backwards. 422 if under 2 markets match, 502 on model failure, 503 with no key |
 | GET          | `/accounts/{mode}/arbitrage/locks`        | 🔒 your lock baskets with cost, guaranteed payout, profit, and `status` (`locked`, `settled`, `closed`) |
 | POST         | `/accounts/{mode}/arbitrage/{id}/lock`    | 🔒 paper only: `{sets?, dry_run?}`; without `sets`, the most profitable size; a second lock of the same opportunity adds to its basket. 409 if it no longer pays, the books can't fill it, cash is short, or the opportunity isn't guaranteed |

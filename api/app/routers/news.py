@@ -57,7 +57,9 @@ def context(request, session, user, basket_id):
 @router.get("")
 def get_climate(basket_id: int, request: Request, session: SessionDep, user: CurrentUser):
     basket, account, _ = context(request, session, user, basket_id)
-    return news.climate(session, basket, account)
+    result = news.climate(session, basket, account)
+    result["monitoring"] = request.app.state.news_monitor.status(session)
+    return result
 
 
 @router.get("/watchlist")
