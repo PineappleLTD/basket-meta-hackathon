@@ -8,6 +8,22 @@ from app.db import Base
 from app.models import utcnow
 
 
+class NewsMonitorUsage(Base):
+    """Reserve each paid HTTP attempt before sending it; never reset on restart."""
+    __tablename__ = "news_monitor_usage"
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    attempts: Mapped[int] = mapped_column(default=0)
+
+
+class NewsMonitorStatus(Base):
+    __tablename__ = "news_monitor_status"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    status: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+    checked_at: Mapped[datetime | None]
+
+
 class NewsContract(Base):
     __tablename__ = "news_contracts"
     market_id: Mapped[int] = mapped_column(ForeignKey("markets.id", ondelete="CASCADE"), primary_key=True)
