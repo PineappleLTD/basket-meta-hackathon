@@ -28,15 +28,15 @@ Finish when the supplied candidates have been considered. No extra searches exis
 '''
 
 
-def make_model(*, http_client=None):
-    key = os.environ.get('MODEL_API_KEY', '').strip()
+def make_model(*, http_client=None, api_key=None, model_name=None, timeout=45):
+    key = (api_key if api_key is not None else os.environ.get('MODEL_API_KEY', '')).strip()
     if not key:
         raise AgentError('Set a replacement MODEL_API_KEY locally before model analysis.')
     options = {'http_client': http_client} if http_client is not None else {}
     return ChatOpenAI(
-        model=os.environ.get('MUSE_MODEL') or 'muse-spark-1.3', api_key=key,
+        model=model_name or os.environ.get('MUSE_MODEL') or 'muse-spark-1.3', api_key=key,
         base_url='https://api.meta.ai/v1', use_responses_api=True,
-        output_version='responses/v1', timeout=45, max_retries=0,
+        output_version='responses/v1', timeout=timeout, max_retries=0,
         max_tokens=4096, store=False, **options,
     )
 

@@ -61,6 +61,12 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
         <p className={error ? "auth-error" : "bd-foot"} role={error ? "alert" : undefined}>{error ?? "Loading saved assessments…"}</p>
       ) : (
         <>
+          {climate.monitoring && <div className="clim-block" role="status" aria-live="polite">
+            <h3>News monitoring: {climate.monitoring.status.toLowerCase().replaceAll("_", " ")}</h3>
+            <p className="bd-foot">{climate.monitoring.note}</p>
+            {climate.monitoring.checked_at && <p className="bd-foot">Last news check: {dateTime(climate.monitoring.checked_at)}</p>}
+            <p className="bd-foot">Request allowance used: discovery {climate.monitoring.requests.discovery.used}/{climate.monitoring.requests.discovery.limit}; evidence {climate.monitoring.requests.evidence.used}/{climate.monitoring.requests.evidence.limit}. Shared across ETFs and app restarts; retries count.</p>
+          </div>}
           <RegimeStrip climate={climate} />
           {climate.missing_rules.length > 0 && <p className="bd-foot">{climate.missing_rules.length} positions need exact exchange rules before they can be scored. Sync market data to load them.</p>}
           <p className="bd-foot">Reserved basket cash: {usd(climate.basket_cash)}. New markets and unheld outcome sides are excluded.</p>
@@ -280,7 +286,7 @@ function Signals({ signals, question }: { signals: ClimateSignal[]; question: (m
         Signals <span className="bd-count">{signals.length}</span>
       </h3>
       {signals.length === 0 ? (
-        <p className="bd-foot">No stories in the last day touch this basket.</p>
+        <p className="bd-foot">No fresh, validated news assessments for this basket in the last hour.</p>
       ) : (
         <ul className="clim-feed">
           {shown.map((s) => (
