@@ -21,6 +21,19 @@ from app.services import news
 log = logging.getLogger(__name__)
 
 
+def _redacted_failure():
+    """Exception class chain and code locations, without messages (which may hold keys)."""
+    import sys
+    import traceback
+    error, chain = sys.exc_info()[1], []
+    while error is not None and len(chain) < 5:
+        chain.append(f"{type(error).__module__}.{type(error).__qualname__}")
+        error = error.__cause__ or error.__context__
+    frames = [f"{Path(f.filename).name}:{f.lineno} {f.name}"
+              for f in traceback.extract_tb(sys.exc_info()[2])[-6:]]
+    return " <- ".join(chain) + " | " + " > ".join(frames)
+
+
 class MonitorStopped(ValueError):
     pass
 
@@ -307,6 +320,7 @@ class NewsMonitor:
         except Exception:  # noqa: BLE001 -- isolate this optional worker and redact provider data
             # Never log provider exceptions: their request objects can contain keys.
             log.warning("News monitoring paused after a failure; core app services remain available")
+            log.warning("News monitor failure (types and frames only): %s", _redacted_failure())
             try:
                 if not self._remaining("discovery") or not self._remaining("evidence"):
                     self._status("BUDGET_EXHAUSTED", "Monitoring stopped at the approved request allowance.")
