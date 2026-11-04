@@ -9,11 +9,36 @@ repository root with `python -m pip install -r requirements-news.txt`. External
 execution stays disabled until explicitly configured; the feature includes an
 offline paper/mocked validation path.
 
-## Arbitrage Scanner
+## Run locally
 
-Finds mispriced Kalshi markets. Hidden from the UI for now: set `ARBITRAGE_ENABLED` in `web/lib/arbitrage.ts` to `true` to show **Arbitrage scanner** in the sidebar again.
+You need Python 3.12+ and Node 20+. Run the backend and the website in **two separate terminals**, both starting from the repository root.
 
-- **Strike ladders:** a higher threshold priced above a lower one (e.g., BTC $150k vs $120k).
-- **Brackets:** YES or NO prices across all ranges that sum to under $1.
+### 1. Backend (API)
 
-**Lock baskets** hold a matched opportunity on paper until settlement, with rebalancing and partial sells disabled.
+```bash
+python3 -m venv .venv                                  # first time only
+.venv/bin/python -m pip install -r requirements-news.txt   # first time only
+.venv/bin/python scripts/run_api.py
+```
+
+The API runs at http://127.0.0.1:8000 (endpoint docs at `/docs`). On first start it syncs Kalshi markets in the background, which takes about a minute.
+
+Building baskets and news monitoring need a Meta Model API key. Put it in a `.env` file at the repository root:
+
+```
+META=LLM_your_key_here
+```
+
+Without a key, the site still runs, but thesis search returns an error.
+
+### 2. Website
+
+```bash
+cd web
+npm install        # first time only
+npm run dev
+```
+
+Open http://localhost:3000. Use `localhost`, not the network address: the API only accepts requests from `http://localhost:3000` by default.
+
+To stop either one, press `Ctrl + C` in its terminal.
