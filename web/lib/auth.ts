@@ -1,6 +1,6 @@
 // Talks to the API's /auth routes. The bearer token lives in localStorage, so these only run in the browser.
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 const TOKEN_KEY = "basket.token";
 // The thesis chat (see ChatContext). Cleared with every token change so it never outlives the session.

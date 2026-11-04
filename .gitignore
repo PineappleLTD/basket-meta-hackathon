@@ -15,3 +15,4 @@ slicefund/
 *.sqlite3-shm
 *.egg-info/
 web/.next/
+runtime-data/

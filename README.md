@@ -11,6 +11,9 @@ offline paper/mocked validation path.
 
 ## Run locally
 
+For a hosted deployment with a public HTTPS URL and persistent data, see
+[DEPLOYMENT.md](DEPLOYMENT.md).
+
 You need Python 3.12+ and Node 20+. Run the backend and the website in **two separate terminals**, both starting from the repository root.
 
 ### 1. Backend (API)

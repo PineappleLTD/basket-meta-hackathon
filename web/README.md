@@ -14,9 +14,10 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-The API URL defaults to `http://localhost:8000`; set `NEXT_PUBLIC_API_URL` to change it. The
-API must allow this origin (`PMETF_CORS_ORIGINS`, which includes `http://localhost:3000` by
-default).
+The API URL defaults to `/api`; Next.js proxies these requests to the backend on
+`127.0.0.1:8000`. Both local and hosted browsers use the website's own origin.
+For a separately hosted API, set `NEXT_PUBLIC_API_URL` before building and allow
+the website's origin in the API's `PMETF_CORS_ORIGINS` setting.
 
 `npm run build && npm start` serves the production build; `npm run typecheck` runs `tsc`.
 
