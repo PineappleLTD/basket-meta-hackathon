@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import threading
 from contextlib import asynccontextmanager
@@ -16,7 +17,7 @@ from app.kalshi import KalshiClient, MarketSource
 from app.llm import LLM, MetaLlama
 from app.models import AccountMode, Market
 from app.routers import accounts, arbitrage, auth, baskets, markets, theses, news, exchange
-from app.services import exchange_execution
+from app.services import exchange_execution, news_monitor
 from app.routers.common import sync_now
 from app.services.sync import refresh_live
 
@@ -85,11 +86,16 @@ def create_app(settings: Settings | None = None, market_source: MarketSource | N
         stop = threading.Event()
         if settings.live_refresh_seconds > 0:
             threading.Thread(target=_live, args=(app, stop), daemon=True).start()
-        yield
-        stop.set()
-        engine.dispose()
-        if exchange_gateway:
-            exchange_gateway.venue.http.close()
+        app.state.news_monitor = news_monitor.NewsMonitor(settings, app.state.sessionmaker, engine)
+        app.state.news_monitor.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            await asyncio.to_thread(app.state.news_monitor.close)
+            engine.dispose()
+            if exchange_gateway:
+                exchange_gateway.venue.http.close()
 
     app = FastAPI(title="Prediction Market ETF API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(

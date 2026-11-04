@@ -11,8 +11,13 @@ cd api
 .venv/bin/python -m pytest
 ```
 
+For app-managed news monitoring, install `requirements-news.txt` from the repository
+root into the same Python environment used by the API. See [NEWS_MONITOR.md](../NEWS_MONITOR.md)
+for startup, the shared request allowance, monitoring status, and recovery.
+
 The SQLite file lives at `api/data/app.db` and is created on startup; tables come from
-`Base.metadata.create_all` (no migrations yet, so delete the file after schema changes).
+`Base.metadata.create_all`. The news monitor adds tables without replacing existing data;
+do not delete an existing database to enable it.
 Users, baskets and basket positions are kept apart in `api/data/shared.db` (attached as
 schema `shared`), which is small and committed to git. Positions name their market by Kalshi
 ticker, since market ids differ between databases. Sessions, NAV history and trading stay in
@@ -41,7 +46,7 @@ Env vars (or `.env` at the repo root / in `api/`), all prefixed `PMETF_`:
 | `PMETF_PAPER_QUOTE_CACHE_SECONDS`  | `15` – how long a fetched order book is reused (preview, then the order)      |
 | `PMETF_PAPER_MAX_QUOTE_AGE_MINUTES`| `30` – oldest stored quote paper fills fall back to when Kalshi is unreachable |
 | `PMETF_CORS_ORIGINS`               | `["http://localhost:3000", "http://localhost:5173"]`                          |
-| `META` (or `PMETF_META_API_KEY`)   | unset – Meta Model API key (`LLM_…`); `/theses/select` returns 503 without it |
+| `META` (or `PMETF_META_API_KEY`, `MODEL_API_KEY`) | unset – server-side Meta key; `/theses/select` returns 503 without it |
 | `PMETF_LLAMA_MODEL`                | `muse-spark-1.3`                                                              |
 | `PMETF_LLAMA_BASE_URL`             | `https://api.meta.ai/v1`                                                      |
 | `PMETF_LLAMA_NAMER_MODEL`          | `muse-spark-1.1` – titles baskets saved without a name, at minimal reasoning  |
