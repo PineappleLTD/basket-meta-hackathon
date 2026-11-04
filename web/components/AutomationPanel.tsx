@@ -73,13 +73,19 @@ export function AutomationPanel({ basketId, nav, holding, onUnauthorized }: Prop
   };
   const open = triggers.filter((t) => t.status === "open");
   const past = triggers.filter((t) => t.status === "filled" || t.status === "failed").slice(0, SHOWN_HISTORY);
+  const active = [
+    automation.auto_rebalance_drift != null && "Rebalance",
+    automation.recurring_days && "Recurring",
+    open.length > 0 && `${open.length} order${open.length === 1 ? "" : "s"}`,
+  ].filter(Boolean);
+  const summary = active.length ? active.join(" · ") : "Off";
 
   return (
-    <div className="ticket auto">
-      <div className="ticket-head">
+    <details className="ticket auto fold">
+      <summary className="ticket-head">
         <h2>Automation</h2>
-        <span className="ticket-mode">Checked on each price sync</span>
-      </div>
+        <span className="ticket-mode">{summary}</span>
+      </summary>
 
       <label className="auto-row">
         <span>
@@ -159,7 +165,7 @@ export function AutomationPanel({ basketId, nav, holding, onUnauthorized }: Prop
           {error}
         </p>
       )}
-    </div>
+    </details>
   );
 }
 

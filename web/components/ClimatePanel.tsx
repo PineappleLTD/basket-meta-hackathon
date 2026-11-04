@@ -48,28 +48,21 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
   }
 
   return (
-    <section className="bd-section clim">
-      <h2>
-        News climate <span className="tag">Paper only · Experimental</span>
-        <InfoTip>
+    <section className="bd-panel clim" role="tabpanel" aria-label="News climate">
+      <div className="bd-panel-head">
+        <span className="tag">Paper only · Experimental</span>
+        <InfoTip end>
           Muse extracts evidence and Ridge scores its effect on the side held. Accepted adverse evidence can reduce a
           holding and move confirmed proceeds among this ETF&rsquo;s existing positions. Trading accuracy still needs independent validation.
         </InfoTip>
-      </h2>
+      </div>
 
       {!climate ? (
         <p className={error ? "auth-error" : "bd-foot"} role={error ? "alert" : undefined}>{error ?? "Loading saved assessments…"}</p>
       ) : (
         <>
-          {climate.monitoring && <div className="clim-block" role="status" aria-live="polite">
-            <h3>News monitoring: {climate.monitoring.status.toLowerCase().replaceAll("_", " ")}</h3>
-            <p className="bd-foot">{climate.monitoring.note}</p>
-            {climate.monitoring.checked_at && <p className="bd-foot">Last news check: {dateTime(climate.monitoring.checked_at)}</p>}
-            <p className="bd-foot">Request allowance used: discovery {climate.monitoring.requests.discovery.used}/{climate.monitoring.requests.discovery.limit}; evidence {climate.monitoring.requests.evidence.used}/{climate.monitoring.requests.evidence.limit}. Shared across ETFs and app restarts; retries count.</p>
-          </div>}
           <RegimeStrip climate={climate} />
           {climate.missing_rules.length > 0 && <p className="bd-foot">{climate.missing_rules.length} positions need exact exchange rules before they can be scored. Sync market data to load them.</p>}
-          <p className="bd-foot">Reserved basket cash: {usd(climate.basket_cash)}. New markets and unheld outcome sides are excluded.</p>
           {climate.cycle && <div className="clim-block" role="status">
             <h3>Paper rebalance: {climate.cycle.status.toLowerCase()}</h3>
             <p className="bd-foot">{climate.cycle.note}</p>
@@ -85,6 +78,17 @@ export function ClimatePanel({ basketId, climate, settings, question, error, onA
             reason={climate.proposal.reason} pending={!!climate.cycle && ["SELLING", "BUYING", "BLOCKED", "EXPIRED", "CANCELLED"].includes(climate.cycle.status)}
             shifts={shifts} settings={settings} signals={climate.signals} question={question} onApplied={onApplied} />
           <Signals signals={climate.signals} question={question} />
+          <details className="clim-diag">
+            <summary>Monitoring details</summary>
+            {climate.monitoring && <div role="status" aria-live="polite">
+              <p className="bd-foot">
+                <b>News monitoring: {climate.monitoring.status.toLowerCase().replaceAll("_", " ")}.</b> {climate.monitoring.note}
+              </p>
+              {climate.monitoring.checked_at && <p className="bd-foot">Last news check: {dateTime(climate.monitoring.checked_at)}</p>}
+              <p className="bd-foot">Request allowance used: discovery {climate.monitoring.requests.discovery.used}/{climate.monitoring.requests.discovery.limit}; evidence {climate.monitoring.requests.evidence.used}/{climate.monitoring.requests.evidence.limit}. Shared across ETFs and app restarts; retries count.</p>
+            </div>}
+            <p className="bd-foot">Reserved basket cash: {usd(climate.basket_cash)}. New markets and unheld outcome sides are excluded.</p>
+          </details>
         </>
       )}
     </section>

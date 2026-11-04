@@ -33,15 +33,13 @@ interface Props {
 // How strongly the basket's weights follow the news climate.
 export function ClimateSettingsCard({ settings, regime, onChange, busy, error }: Props) {
   return (
-    <div className="ticket auto">
-      <div className="ticket-head">
+    <details className="ticket auto fold">
+      <summary className="ticket-head">
         <h2>Climate response</h2>
-        {regime && (
-          <span className="ticket-mode">
-            <span className={`clim-dot ${regime}`} aria-hidden="true" /> {regime[0].toUpperCase() + regime.slice(1)}
-          </span>
-        )}
-      </div>
+        <span className="ticket-mode">
+          {regime && <span className={`clim-dot ${regime}`} aria-hidden="true" />} {MODES.find(([m]) => m === settings.mode)?.[1]}
+        </span>
+      </summary>
 
       <div className="ticket-tabs clim-modes" role="tablist" aria-label="Climate reweighting">
         {MODES.map(([m, label]) => (
@@ -58,8 +56,13 @@ export function ClimateSettingsCard({ settings, regime, onChange, busy, error }:
           </button>
         ))}
       </div>
-      <p className="invest-fine clim-mode-note">{MODE_NOTE[settings.mode]}</p>
-      <p className="invest-fine">Paper trading only. The ETF remembers the completed allocation, including cash. Other trades wait while a news rebalance is pending.</p>
+      <p className="invest-fine clim-mode-note">
+        {MODE_NOTE[settings.mode]}
+        <InfoTip end>
+          Paper trading only. The ETF remembers the completed allocation, including cash. Other trades wait while a news
+          rebalance is pending.
+        </InfoTip>
+      </p>
       {error && <p className="auth-error" role="alert">{error}</p>}
 
       <label className="auto-row">
@@ -99,6 +102,6 @@ export function ClimateSettingsCard({ settings, regime, onChange, busy, error }:
           ))}
         </select>
       </label>
-    </div>
+    </details>
   );
 }
