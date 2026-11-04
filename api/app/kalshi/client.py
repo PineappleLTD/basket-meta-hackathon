@@ -122,7 +122,6 @@ class KalshiClient:
                     resolution_rules="\n\n".join(v for v in (m.get("rules_primary"), m.get("rules_secondary")) if v),
                     # Stop news decisions by the trading cutoff, even if settlement is later.
                     resolution_deadline=datetime.fromisoformat(close_time) if close_time else None,
-                    series_ticker=event.get("series_ticker"),
                     strike_type=m.get("strike_type"),
                     floor_strike=_number(m.get("floor_strike")),
                     cap_strike=_number(m.get("cap_strike")),
@@ -130,8 +129,6 @@ class KalshiClient:
                     event_title=event.get("title") or None,
                     mutually_exclusive=bool(event.get("mutually_exclusive")),
                     event_size=event_size,
-                    early_close=m.get("early_close_condition") or None,
-                    opened_at=datetime.fromisoformat(m["open_time"]) if m.get("open_time") else None,
                 )
         return list(markets.values())
 

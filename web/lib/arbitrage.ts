@@ -2,16 +2,18 @@ import { apiJson } from "./auth";
 import type { Account, AccountMode, BasketOrder, PlannedOrder } from "./accounts";
 import type { Market, Side } from "./theses";
 
+// Hides the arbitrage scanner from the UI (sidebar link, /arbitrage, "add sets" on lock baskets).
+// The API and the code stay in place; set to true to bring it back.
+export const ARBITRAGE_ENABLED = false;
+
 // Mirrors OpportunityOut, ArbitrageOut, LockOut and friends in api/app/schemas.py (fields this UI uses).
 
-export type ArbKind = "ladder" | "time" | "bracket_no" | "bracket_yes" | "implication";
+export type ArbKind = "ladder" | "bracket_no" | "bracket_yes";
 
 export const KIND_LABEL: Record<ArbKind, string> = {
   ladder: "Strike ladder",
-  time: "Deadline pair",
   bracket_no: "Bracket · NO on each",
   bracket_yes: "Bracket · YES on each",
-  implication: "Model-proposed pair",
 };
 
 export interface ArbLeg {
@@ -30,8 +32,6 @@ export interface ArbLeg {
 export interface Opportunity {
   id: string;
   kind: ArbKind;
-  // False for model-proposed pairs: they rest on the model's reading of two questions.
-  guaranteed: boolean;
   title: string;
   explanation: string;
   legs: ArbLeg[];
@@ -81,24 +81,6 @@ export interface ArbSummary {
 export interface Arbitrage {
   summary: ArbSummary;
   opportunities: Opportunity[];
-  implications: Opportunity[];
-}
-
-export interface Implication {
-  if_market: Market;
-  then_market: Market;
-  relation: "definitional" | "causal";
-  confidence: number;
-  reason: string;
-  edge_per_set: number | null;
-  mispriced: boolean;
-  opportunity_id: string | null;
-}
-
-export interface Implications {
-  query: string;
-  candidates_considered: number;
-  pairs: Implication[];
 }
 
 export interface Lock {
@@ -136,7 +118,6 @@ export interface LockResult {
   lock: Lock;
   basket_order: BasketOrder;
   filled_sets: number;
-  note: string | null;
   account: Account;
 }
 
@@ -150,9 +131,6 @@ export const getArbitrage = () => apiJson<Arbitrage>("/arbitrage");
 
 // `sync` pulls fresh markets from Kalshi first, which takes about half a minute.
 export const rescan = (sync = false) => apiJson<Arbitrage>("/arbitrage/scan", post({ sync }));
-
-// One model call: a few seconds.
-export const findImplications = (query: string) => apiJson<Implications>("/arbitrage/implications", post({ query }));
 
 export const listLocks = (mode: AccountMode = "paper") => apiJson<Lock[]>(`/accounts/${mode}/arbitrage/locks`);
 

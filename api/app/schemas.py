@@ -463,10 +463,8 @@ class ArbLegOut(BaseModel):
 
 class OpportunityOut(BaseModel):
     id: str
-    # ladder | time | bracket_no | bracket_yes | implication
+    # ladder | bracket_no | bracket_yes
     kind: str
-    # False for implications: they rest on a model's reading of two questions.
-    guaranteed: bool
     title: str
     explanation: str
     legs: list[ArbLegOut]
@@ -524,39 +522,13 @@ class ArbSummaryOut(BaseModel):
 
 class ArbitrageOut(BaseModel):
     summary: ArbSummaryOut
-    # Guaranteed kinds, most profit first.
+    # Most profit first.
     opportunities: list[OpportunityOut]
-    # Model-proposed pairs priced the wrong way, checked in the last day. Not guaranteed.
-    implications: list[OpportunityOut]
 
 
 class ScanIn(BaseModel):
     # Sync markets from Kalshi first (about half a minute), so the scan screens fresh quotes.
     sync: bool = False
-
-
-class ImplicationIn(BaseModel):
-    query: str = Field(min_length=3, max_length=300)
-
-
-class ImplicationOut(BaseModel):
-    if_market: MarketOut
-    then_market: MarketOut
-    # "definitional": if_market is a special case of then_market. "causal": very likely, not by definition.
-    relation: str
-    confidence: float
-    reason: str
-    # YES on then_market plus NO on if_market at the stored quotes, after fees, per set. Positive when
-    # the pair is priced as if the implication ran the other way.
-    edge_per_set: float | None
-    mispriced: bool
-    opportunity_id: str | None
-
-
-class ImplicationsOut(BaseModel):
-    query: str
-    candidates_considered: int
-    pairs: list[ImplicationOut]
 
 
 class LockIn(BaseModel):
@@ -581,7 +553,5 @@ class LockPreviewOut(BaseModel):
 class LockResultOut(BaseModel):
     lock: LockOut
     basket_order: BasketOrderOut
-    # Sets every leg filled; extra contracts on any leg were sold back.
     filled_sets: int
-    note: str | None
     account: AccountOut

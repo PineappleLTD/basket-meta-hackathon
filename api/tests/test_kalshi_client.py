@@ -69,13 +69,11 @@ def test_untitled_market_named_from_event():
 
 
 def test_fetch_markets_reads_strikes_and_event_structure():
-    """What the arbitrage scanner groups by: series, strike, mutual exclusivity, and how many outcomes."""
+    """What the arbitrage scanner groups by: strike, mutual exclusivity, and how many outcomes."""
     above = _market("T4") | {
         "strike_type": "greater",
         "floor_strike": 4,
         "yes_sub_title": "Above 4.00%",
-        "early_close_condition": "If this event occurs, the market will close the following 10am ET.",
-        "open_time": "2026-01-02T15:00:00Z",
         "rules_primary": "If the rate is above 4.00% before Dec 31, 2026, then the market resolves to Yes.",
     }
     quiet = _market("T5", volume="1.00") | {"strike_type": "greater", "floor_strike": "5"}
@@ -84,14 +82,11 @@ def test_fetch_markets_reads_strikes_and_event_structure():
     client = _client(lambda _: httpx.Response(200, json={"cursor": "", "events": [event]}))
 
     [market] = client.fetch_markets()
-    assert market.series_ticker == "KXSERIES"
     assert (market.strike_type, market.floor_strike, market.cap_strike) == ("greater", 4.0, None)
     assert market.outcome == "Above 4.00%"
     assert market.mutually_exclusive is True
     # Counts the active market the volume filter dropped, not the one that hasn't opened.
     assert market.event_size == 2
-    assert market.early_close.startswith("If this event occurs")
-    assert market.opened_at.year == 2026
 
 
 def test_fetch_history_batches_and_skips_open_candle():
