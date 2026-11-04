@@ -1,4 +1,4 @@
-# SliceFund news rebalancing integration
+# Basket news rebalancing integration
 
 This integration is based on `PineappleLTD/basket-meta-hackathon` commit
 `309f3a52f796eccb4096977b9bc1e9510b9058f4` and is delivered on a separate review
