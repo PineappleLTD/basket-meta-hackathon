@@ -1,0 +1,5 @@
+\set ON_ERROR_STOP on
+\getenv basket_password BASKET_APP_PASSWORD
+CREATE ROLE basket_owner WITH LOGIN PASSWORD :'basket_password'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+CREATE DATABASE basket OWNER basket_owner;

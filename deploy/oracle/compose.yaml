@@ -1,0 +1,70 @@
+name: basket-oracle
+
+services:
+  basket:
+    image: ${BASKET_IMAGE:?Set BASKET_IMAGE to an immutable release tag}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: ${BASKET_ENV_FILE:-/opt/basket/config/runtime.env}
+        format: raw
+    environment:
+      PORT: "3000"
+      BASKET_DATA_DIR: /data
+      BASKET_REQUIRE_POSTGRES: "true"
+      PMETF_NEWS_DATABASE_STATE: "true"
+      PMETF_SEED_ON_STARTUP: "false"
+      # Stage against the existing database without running a second scheduler.
+      PMETF_NEWS_MONITOR_ENABLED: ${NEWS_MONITOR_ENABLED:-false}
+      PMETF_LIVE_REFRESH_SECONDS: ${LIVE_REFRESH_SECONDS:-0}
+      PMETF_LIVE_ENABLED: "false"
+      PMETF_LIVE_PRODUCTION_ENABLED: "false"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    volumes:
+      - basket-data:/data
+    expose:
+      - "3000"
+    mem_limit: 4g
+    stop_grace_period: 75s
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/api/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 90s
+      retries: 4
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      BASKET_HOSTNAME: ${BASKET_HOSTNAME:?Set the public DNS hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      basket:
+        condition: service_healthy
+    mem_limit: 128m
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  basket-data:
+  caddy-data:
+  caddy-config:

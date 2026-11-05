@@ -1,0 +1,46 @@
+# Apply only after the database copy has passed verification.
+services:
+  basket:
+    environment:
+      PMETF_DATABASE_URL: ""
+      PMETF_DATABASE_URL_FILE: /run/secrets/database-url
+    secrets:
+      - database-url
+    depends_on:
+      database:
+        condition: service_healthy
+
+  database:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    env_file:
+      - path: ${BASKET_POSTGRES_ENV_FILE:-/opt/basket/config/postgres.env}
+        format: raw
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    command: [postgres, -c, shared_buffers=128MB, -c, max_connections=40]
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./init-database.sql:/docker-entrypoint-initdb.d/01-basket.sql:ro
+    mem_limit: 768m
+    shm_size: 128m
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U postgres -d postgres && psql -U postgres -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname = 'basket'\" | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
+secrets:
+  database-url:
+    file: ${BASKET_DATABASE_URL_FILE:-/opt/basket/config/database-url}
+
+volumes:
+  postgres-data:

@@ -17,6 +17,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def runtime_environment():
     env = os.environ.copy()
+    database_url_file = env.pop("PMETF_DATABASE_URL_FILE", None)
+    if database_url_file:
+        if env.get("PMETF_DATABASE_URL"):
+            raise RuntimeError("Configure either PMETF_DATABASE_URL or PMETF_DATABASE_URL_FILE, not both.")
+        database_url = Path(database_url_file).read_text().strip()
+        if not database_url:
+            raise RuntimeError("The database connection secret is empty.")
+        env["PMETF_DATABASE_URL"] = database_url
     volume = env.get("RAILWAY_VOLUME_MOUNT_PATH")
     if env.get("RAILWAY_ENVIRONMENT_ID") and not volume:
         raise RuntimeError("Attach a Railway volume at /data before deploying Basket.")
