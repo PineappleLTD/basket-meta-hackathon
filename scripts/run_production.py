@@ -31,6 +31,8 @@ def runtime_environment():
         os.initgroups(user, account.pw_gid)
         os.setgid(account.pw_gid)
         os.setuid(account.pw_uid)
+        # libpq and other clients resolve per-user files through HOME after dropping root.
+        env["HOME"] = account.pw_dir
     env.setdefault("PMETF_DATABASE_URL", f"sqlite:///{data / 'app.db'}")
     env.setdefault("PMETF_SHARED_DATABASE", str(data / "shared.db"))
     env.setdefault("PMETF_NEWS_MONITOR_STATE", str(data / "news-agent.sqlite3"))

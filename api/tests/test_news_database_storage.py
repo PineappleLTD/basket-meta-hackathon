@@ -3,6 +3,7 @@ from dataclasses import asdict
 from datetime import timedelta
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 import zlib
 
 import pytest
@@ -148,3 +149,24 @@ def test_collector_requires_direct_neon_connection(monkeypatch):
         monkeypatch.setenv(key, value)
     with pytest.raises(RuntimeError, match="direct connection"):
         module.prepare_database(env)
+
+
+def test_runtime_home_matches_the_unprivileged_user(monkeypatch, tmp_path):
+    import pwd
+
+    script = Path(__file__).resolve().parents[2] / "scripts/run_production.py"
+    spec = importlib.util.spec_from_file_location("basket_runtime_home", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setenv("BASKET_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("BASKET_RUNTIME_USER", "basket")
+    monkeypatch.setenv("HOME", "/root")
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT_ID", raising=False)
+    monkeypatch.delenv("RAILWAY_VOLUME_MOUNT_PATH", raising=False)
+    monkeypatch.setattr(module.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(pwd, "getpwnam", lambda _: SimpleNamespace(
+        pw_uid=1001, pw_gid=1001, pw_dir="/home/basket"))
+    for operation in ("chown", "initgroups", "setgid", "setuid"):
+        monkeypatch.setattr(module.os, operation, lambda *args: None)
+    env = module.runtime_environment()
+    assert env["HOME"] == "/home/basket"
