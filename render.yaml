@@ -3,21 +3,23 @@ services:
     name: basket
     runtime: docker
     repo: https://github.com/PineappleLTD/basket
-    branch: codex/render-deployment-20261104
+    branch: codex/free-cloud-deployment-20261104
     region: ohio
-    plan: 0.5c-512mb
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
     autoDeployTrigger: "off"
-    disk:
-      name: basket-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: PORT
         value: "10000"
       - key: BASKET_DATA_DIR
         value: /data
+      - key: BASKET_REQUIRE_POSTGRES
+        value: "true"
+      - key: PMETF_DATABASE_URL
+        sync: false
+      - key: PMETF_NEWS_DATABASE_STATE
+        value: "true"
       - key: META
         sync: false

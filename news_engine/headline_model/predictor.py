@@ -15,7 +15,8 @@ from .ridge_model import PositionRidge, classes
 
 
 class Predictor:
-    def __init__(self, artifact=None, *, cache_path=None, max_calls=1, client=None, max_age_seconds=3600):
+    def __init__(self, artifact=None, *, cache_path=None, max_calls=1, client=None, max_age_seconds=3600,
+                 cache=None):
         if max_calls < 1:
             raise ValueError('A positive model-call budget is required.')
         if isinstance(max_age_seconds, bool) or not isinstance(max_age_seconds, int) or not 1 <= max_age_seconds <= 86400:
@@ -37,7 +38,7 @@ class Predictor:
         self.client = client or MetaClient()
         if self.client.model != self.scorer.evidence_model:
             raise ValueError('Configured Muse model differs from the trained artifact.')
-        self.cache = FeatureCache(cache_path or ROOT / 'state/training/features.sqlite3')
+        self.cache = cache if cache is not None else FeatureCache(cache_path or ROOT / 'state/training/features.sqlite3')
         self.max_calls, self.calls = max_calls, 0
 
     def close(self):

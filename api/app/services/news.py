@@ -162,7 +162,7 @@ class CacheOnlyClient:
         raise NewsError("No validated cached evidence for this exact article and contract")
 
 
-def make_predictor(settings):
+def make_predictor(settings, sessions=None):
     from headline_model.predictor import Predictor
     from headline_model.ridge_model import PositionRidge
     artifact = settings.news_model_path
@@ -172,9 +172,10 @@ def make_predictor(settings):
         if not artifact.is_absolute():
             artifact = MODEL_ROOT / artifact
     scorer = PositionRidge(artifact)
+    from app.services.news_storage import evidence_cache
     return Predictor(settings.news_model_path, cache_path=settings.news_feature_cache, max_calls=1,
                      max_age_seconds=settings.news_max_age_seconds,
-                     client=CacheOnlyClient(scorer.evidence_model))
+                     client=CacheOnlyClient(scorer.evidence_model), cache=evidence_cache(settings, sessions))
 
 
 def ingest(session, basket, article_data, predictor, now=None):

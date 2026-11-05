@@ -1,4 +1,4 @@
-"""Run the production website and API together, with state on a persistent volume."""
+"""Run the production website and API together with durable application storage."""
 
 import argparse
 import os
@@ -56,6 +56,10 @@ def prepare_database(env):
 
     settings = Settings(_env_file=None)
     url = make_url(settings.database_url)
+    if env.get("BASKET_REQUIRE_POSTGRES", "").lower() == "true" and url.get_backend_name() != "postgresql":
+        raise RuntimeError("Configure PMETF_DATABASE_URL with the free hosted PostgreSQL database before deploying.")
+    if settings.news_database_state and url.host and url.host.endswith(".neon.tech") and "-pooler." in url.host:
+        raise RuntimeError("Use Neon's direct connection URL, with pooling disabled, for the collector's session lock.")
     if url.get_backend_name() == "sqlite":
         for filename in (url.database, settings.shared_database):
             if filename and filename != ":memory:":

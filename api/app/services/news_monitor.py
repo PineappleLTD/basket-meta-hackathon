@@ -208,7 +208,7 @@ class NewsMonitor:
             if not article_ids:
                 continue
             # Cache-only scorer has no paid transport or trading capability.
-            predictor = news.make_predictor(self.settings)
+            predictor = news.make_predictor(self.settings, self.sessions)
             try:
                 for article_id in article_ids:
                     self._check_stop()
@@ -235,6 +235,7 @@ class NewsMonitor:
         from news_agent.agent import PROMPT, make_model, run_agent
         from news_agent.providers import HTTP, NoRedirect, collect
         from news_agent.scoring import score_staged
+        from app.services.news_storage import evidence_cache
 
         self._check_stop()
         watchlists = self._watchlists()
@@ -250,7 +251,8 @@ class NewsMonitor:
                                 sleeper=self._sleep)
             predictor = Predictor(self.settings.news_model_path,
                                   cache_path=self.settings.news_feature_cache, max_calls=3, client=client,
-                                  max_age_seconds=self.settings.news_max_age_seconds)
+                                  max_age_seconds=self.settings.news_max_age_seconds,
+                                  cache=evidence_cache(self.settings, self.sessions))
             stack.callback(predictor.close)
             http_client = stack.enter_context(httpx.Client(
                 transport=self.discovery_transport, follow_redirects=False, timeout=45,
@@ -339,6 +341,9 @@ class NewsMonitor:
                 self.local_status = "PAUSED_ERROR"
                 return
             from news_agent.core import Store
+            from app.services.news_storage import restore_agent, save_agent
+            if self.settings.news_database_state:
+                restore_agent(self.sessions, self.settings.news_monitor_state)
             store = Store(Path(self.settings.news_monitor_state))
             try:
                 while not self.stop.is_set():
@@ -347,11 +352,16 @@ class NewsMonitor:
                         break
                     self._status("CHECKING", "Checking news for saved ETF positions.")
                     self.cycle(store)
+                    if self.settings.news_database_state:
+                        with store.lock:
+                            save_agent(self.sessions, self.settings.news_monitor_state)
                     if self.local_status == "BUDGET_EXHAUSTED":
                         break
                     self.stop.wait(self.settings.news_monitor_interval_seconds)
             finally:
                 store.close()
+                if self.settings.news_database_state:
+                    save_agent(self.sessions, self.settings.news_monitor_state)
         except MonitorStopped:
             pass
         except Exception as error:  # noqa: BLE001 -- isolate this optional worker and redact provider data

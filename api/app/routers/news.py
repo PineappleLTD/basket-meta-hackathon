@@ -97,7 +97,7 @@ def post_article(basket_id: int, body: ArticleIn, request: Request, session: Ses
     own = predictor is None
     try:
         if own:
-            predictor = news.make_predictor(request.app.state.settings)
+            predictor = news.make_predictor(request.app.state.settings, request.app.state.sessionmaker)
         result = news.ingest(session, basket, body.model_dump(), predictor)
         session.commit()
         return result

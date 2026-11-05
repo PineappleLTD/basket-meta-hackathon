@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     # Classification is cache-only here. Extraction belongs to the separately budgeted news agent.
     news_model_path: str | None = None
     news_feature_cache: str | None = None
+    # Persist evidence and the collector's completed work in the app database on ephemeral hosts.
+    news_database_state: bool = False
     # App-managed discovery. Paid limits are persistent totals across baskets/restarts,
     # not allowances that reset every poll. Increase only with an approved budget.
     news_monitor_enabled: bool = True

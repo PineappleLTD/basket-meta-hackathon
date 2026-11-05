@@ -1,11 +1,33 @@
 """Additive tables for paper news rebalancing; existing account tables stay intact."""
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, JSON, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, JSON, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 from app.models import utcnow
+
+
+class NewsEvidenceCache(Base):
+    __tablename__ = "news_evidence_cache"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class NewsEvidenceFailure(Base):
+    __tablename__ = "news_evidence_failures"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    error: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class NewsAgentCheckpoint(Base):
+    __tablename__ = "news_agent_checkpoint"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    payload: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class NewsMonitorUsage(Base):

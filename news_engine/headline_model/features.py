@@ -20,6 +20,14 @@ def key_for(row, model):
     return digest({'input': model_input(row), 'model': model, 'extractor': EXTRACTOR_HASH})
 
 
+def cached_assessment(data, row, model):
+    """Apply the same provenance and evidence checks to every cache backend."""
+    if data['model'] != model or data['prompt_version'] != PROMPT_VERSION:
+        raise ValueError('Cached feature provenance mismatch.')
+    values = {**data['features'], **{k: data[k] for k in ['related', 'confidence', 'reason', 'evidence']}}
+    return validate_assessment(values, {'headline': row['headline'], 'summary': row['summary']}, model)
+
+
 class FeatureCache:
     def __init__(self, path):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -35,11 +43,7 @@ class FeatureCache:
             result = self.db.execute('SELECT assessment FROM features WHERE key=?', (key_for(row, model),)).fetchone()
         if not result:
             return None
-        data = json.loads(result[0])
-        if data['model'] != model or data['prompt_version'] != PROMPT_VERSION:
-            raise ValueError('Cached feature provenance mismatch.')
-        values = {**data['features'], **{k: data[k] for k in ['related', 'confidence', 'reason', 'evidence']}}
-        return validate_assessment(values, {'headline': row['headline'], 'summary': row['summary']}, model)
+        return cached_assessment(json.loads(result[0]), row, model)
 
     def put(self, row, assessment):
         with self.lock, self.db:
