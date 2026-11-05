@@ -1,0 +1,4 @@
+:{$PORT} {
+    header Cache-Control "no-store"
+    redir https://basket-0d26fc05.swedencentral.cloudapp.azure.com{uri} 307
+}
