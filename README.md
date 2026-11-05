@@ -9,6 +9,10 @@ repository root with `python -m pip install -r requirements-news.txt`. External
 execution stays disabled until explicitly configured; the feature includes an
 offline paper/mocked validation path.
 
+## Live link
+
+https://basket-live.onrender.com/
+
 ## Run locally
 
 You need Python 3.12+ and Node 20+. Run the backend and the website in **two separate terminals**, both starting from the repository root.
