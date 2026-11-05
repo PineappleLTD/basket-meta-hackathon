@@ -11,10 +11,17 @@ import hashlib
 import io
 import os
 from pathlib import Path
+import re
 import subprocess
 from urllib.parse import parse_qs, unquote, urlsplit
 
 IMAGE = "postgres:18.6-alpine"
+
+
+def restore_listing(contents):
+    """Keep initdb's existing public schema and restore all application objects."""
+    existing_schema = re.compile(r"^\d+;\s+\d+\s+\d+\s+(?:SCHEMA\s+-\s+public|COMMENT\s+-\s+SCHEMA\s+public)(?:\s|$)")
+    return "\n".join(line for line in contents.splitlines() if not existing_schema.match(line)) + "\n"
 
 
 def read_env(path):
@@ -122,8 +129,14 @@ def main():
     container_path = "/backups/" + backup.name
     run_client(source, args.network, "pg_dump", "--format=custom", "--no-owner", "--no-privileges",
                "--schema=public", "--schema=shared", "--file=" + container_path, backup_dir=backups)
+    listing = run_client(target, args.network, "pg_restore", "--list", container_path, backup_dir=backups)
+    listing_file = backups / (backup.stem + ".restore.list")
+    descriptor = os.open(listing_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w") as output:
+        output.write(restore_listing(listing))
     run_client(target, args.network, "pg_restore", "--dbname=basket", "--exit-on-error",
-               "--single-transaction", "--no-owner", "--no-privileges", container_path, backup_dir=backups)
+               "--single-transaction", "--no-owner", "--no-privileges",
+               "--use-list=/backups/" + listing_file.name, container_path, backup_dir=backups)
     target_tables = tables(target, args.network)
     target_counts = counts(target, args.network, target_tables)
     if source_tables != target_tables or source_counts != target_counts:

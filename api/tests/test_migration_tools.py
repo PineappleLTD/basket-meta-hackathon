@@ -54,6 +54,22 @@ def test_private_database_credentials_are_preserved_on_rerun(tmp_path):
     assert (directory / "postgres.env").read_bytes() == before["postgres.env"]
 
 
+def test_restore_preserves_existing_public_schema_and_all_application_objects():
+    module = load_script("copy-database.py")
+    entries = [
+        "; Archive table of contents",
+        "6; 2615 2200 SCHEMA - public neon_superuser",
+        "7; 2615 16400 SCHEMA - shared basket_owner",
+        "900; 0 0 COMMENT - SCHEMA public neon_superuser",
+        "901; 1259 16401 TABLE public markets basket_owner",
+        "902; 0 16401 TABLE DATA public markets basket_owner",
+        "903; 1259 16402 TABLE shared users basket_owner",
+        "904; 0 16402 TABLE DATA shared users basket_owner",
+    ]
+    restored = module.restore_listing("\n".join(entries)).splitlines()
+    assert restored == [entries[index] for index in (0, 2, 4, 5, 6, 7)]
+
+
 @pytest.fixture
 def copy_context(tmp_path, monkeypatch):
     module = load_script("copy-database.py")
